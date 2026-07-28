@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Commerce Documents for WooCommerce
  * Description: Universal proforma and invoice generation foundation for WooCommerce orders.
- * Version: 0.2.1
+ * Version: 0.2.2
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce

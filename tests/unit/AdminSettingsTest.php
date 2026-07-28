@@ -54,4 +54,32 @@ final class AdminSettingsTest extends TestCase
         $settings = AdminSettings::sanitize(['language' => 'de'], []);
         self::assertSame('pl-PL', $settings['language']);
     }
+
+    public function testResolvesSellerFromWooCommerceWithoutGuessingTaxIdentifier(): void
+    {
+        $settings = AdminSettings::sanitize([
+            'seller_source' => 'woocommerce',
+            'seller' => ['tax_identifier' => 'PL123'],
+        ], []);
+        $options = [
+            'blogname' => 'Example Store',
+            'admin_email' => 'store@example.invalid',
+            'woocommerce_store_address' => 'Main Street 1',
+            'woocommerce_store_address_2' => '',
+            'woocommerce_store_postcode' => '00-001',
+            'woocommerce_store_city' => 'Warsaw',
+            'woocommerce_default_country' => 'PL:MZ',
+        ];
+        $seller = AdminSettings::resolveSeller(
+            $settings,
+            static function (string $name, $default) use ($options) {
+                return $options[$name] ?? $default;
+            }
+        );
+
+        self::assertSame('Example Store', $seller['name']);
+        self::assertSame('PL123', $seller['tax_identifier']);
+        self::assertSame('PL', $seller['address']['country_code']);
+        self::assertSame('MZ', $seller['address']['region']);
+    }
 }

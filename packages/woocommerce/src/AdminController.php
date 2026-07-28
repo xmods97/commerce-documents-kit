@@ -60,7 +60,15 @@ final class AdminController
             wp_die(esc_html__('You are not allowed to manage commerce documents.', 'commerce-documents-woocommerce'));
         }
         $settings = (array) get_option('commerce_documents_wc_settings', []);
-        $seller = (array) ($settings['seller'] ?? []);
+        $sellerSource = ($settings['seller_source'] ?? 'manual') === 'woocommerce'
+            ? 'woocommerce'
+            : 'manual';
+        $seller = AdminSettings::resolveSeller(
+            $settings,
+            static function (string $name, $default) {
+                return get_option($name, $default);
+            }
+        );
         $address = (array) ($seller['address'] ?? []);
         $proforma = (array) ($settings['proforma_statuses'] ?? []);
         $invoice = (array) ($settings['invoice_statuses'] ?? []);
@@ -73,16 +81,21 @@ final class AdminController
         echo '<p><strong>Test mode:</strong> documents are stored locally. No email, PDF or KSeF submission is performed.</p>';
         echo '<form method="post" action="options.php">';
         settings_fields('commerce_documents');
-        echo '<h2>Seller</h2><table class="form-table">';
-        self::field('Company / name', 'name', (string) ($seller['name'] ?? ''));
+        echo '<h2>Seller</h2><fieldset><label><input type="radio" name="commerce_documents_wc_settings[seller_source]" value="woocommerce" '
+            . checked($sellerSource, 'woocommerce', false) . '> Use WooCommerce store details</label><br>'
+            . '<label><input type="radio" name="commerce_documents_wc_settings[seller_source]" value="manual" '
+            . checked($sellerSource, 'manual', false) . '> Enter seller details manually</label></fieldset>'
+            . '<p class="description">WooCommerce supplies the store name, email and address. Tax identifier remains explicit because WooCommerce core has no seller VAT/NIP field.</p>'
+            . '<table class="form-table">';
+        self::field('Company / name', 'name', (string) ($seller['name'] ?? ''), 'text', $sellerSource === 'woocommerce');
         self::field('Tax identifier', 'tax_identifier', (string) ($seller['tax_identifier'] ?? ''));
-        self::field('Email', 'email', (string) ($seller['email'] ?? ''), 'email');
-        self::addressField('Address line 1', 'line1', (string) ($address['line1'] ?? ''));
-        self::addressField('Address line 2', 'line2', (string) ($address['line2'] ?? ''));
-        self::addressField('Postal code', 'postal_code', (string) ($address['postal_code'] ?? ''));
-        self::addressField('City', 'city', (string) ($address['city'] ?? ''));
-        self::addressField('Region', 'region', (string) ($address['region'] ?? ''));
-        self::addressField('Country code', 'country_code', (string) ($address['country_code'] ?? ''));
+        self::field('Email', 'email', (string) ($seller['email'] ?? ''), 'email', $sellerSource === 'woocommerce');
+        self::addressField('Address line 1', 'line1', (string) ($address['line1'] ?? ''), $sellerSource === 'woocommerce');
+        self::addressField('Address line 2', 'line2', (string) ($address['line2'] ?? ''), $sellerSource === 'woocommerce');
+        self::addressField('Postal code', 'postal_code', (string) ($address['postal_code'] ?? ''), $sellerSource === 'woocommerce');
+        self::addressField('City', 'city', (string) ($address['city'] ?? ''), $sellerSource === 'woocommerce');
+        self::addressField('Region', 'region', (string) ($address['region'] ?? ''), $sellerSource === 'woocommerce');
+        self::addressField('Country code', 'country_code', (string) ($address['country_code'] ?? ''), $sellerSource === 'woocommerce');
         echo '<tr><th>Document language</th><td><select name="commerce_documents_wc_settings[language]">';
         foreach (['pl-PL' => 'Polski', 'en' => 'English'] as $value => $label) {
             echo '<option value="' . esc_attr($value) . '" ' . selected($settings['language'] ?? 'pl-PL', $value, false) . '>'
@@ -214,16 +227,24 @@ final class AdminController
         return is_array($data) ? DocumentSnapshot::fromArray($data) : null;
     }
 
-    private static function field(string $label, string $key, string $value, string $type = 'text'): void
+    private static function field(
+        string $label,
+        string $key,
+        string $value,
+        string $type = 'text',
+        bool $readOnly = false
+    ): void
     {
         echo '<tr><th>' . esc_html($label) . '</th><td><input class="regular-text" type="' . esc_attr($type)
-            . '" name="commerce_documents_wc_settings[seller][' . esc_attr($key) . ']" value="' . esc_attr($value) . '"></td></tr>';
+            . '" name="commerce_documents_wc_settings[seller][' . esc_attr($key) . ']" value="' . esc_attr($value) . '"'
+            . ($readOnly ? ' readonly' : '') . '></td></tr>';
     }
 
-    private static function addressField(string $label, string $key, string $value): void
+    private static function addressField(string $label, string $key, string $value, bool $readOnly = false): void
     {
         echo '<tr><th>' . esc_html($label) . '</th><td><input class="regular-text" type="text" name="commerce_documents_wc_settings[seller][address]['
-            . esc_attr($key) . ']" value="' . esc_attr($value) . '"></td></tr>';
+            . esc_attr($key) . ']" value="' . esc_attr($value) . '"'
+            . ($readOnly ? ' readonly' : '') . '></td></tr>';
     }
 
     private static function notice(): void

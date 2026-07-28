@@ -25,6 +25,9 @@ final class AdminSettings
         }
 
         return [
+            'seller_source' => ($input['seller_source'] ?? '') === 'woocommerce'
+                ? 'woocommerce'
+                : 'manual',
             'seller' => [
                 'name' => trim((string) ($seller['name'] ?? '')),
                 'tax_identifier' => trim((string) ($seller['tax_identifier'] ?? '')),
@@ -43,6 +46,33 @@ final class AdminSettings
             'invoice_statuses' => $cleanStatuses($input['invoice_statuses'] ?? []),
             'policy_name' => 'woocommerce-status-policy',
             'policy_version' => 1,
+        ];
+    }
+
+    /**
+     * @param callable(string, mixed): mixed $option
+     * @return array<string, mixed>
+     */
+    public static function resolveSeller(array $settings, callable $option): array
+    {
+        $seller = (array) ($settings['seller'] ?? []);
+        if (($settings['seller_source'] ?? 'manual') !== 'woocommerce') {
+            return $seller;
+        }
+
+        $countryRegion = explode(':', (string) $option('woocommerce_default_country', ''), 2);
+        return [
+            'name' => trim((string) $option('blogname', '')),
+            'tax_identifier' => trim((string) ($seller['tax_identifier'] ?? '')),
+            'email' => trim((string) $option('admin_email', '')),
+            'address' => [
+                'line1' => trim((string) $option('woocommerce_store_address', '')),
+                'line2' => trim((string) $option('woocommerce_store_address_2', '')),
+                'postal_code' => trim((string) $option('woocommerce_store_postcode', '')),
+                'city' => trim((string) $option('woocommerce_store_city', '')),
+                'region' => trim((string) ($countryRegion[1] ?? '')),
+                'country_code' => strtoupper(trim((string) ($countryRegion[0] ?? ''))),
+            ],
         ];
     }
 

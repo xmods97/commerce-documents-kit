@@ -16,7 +16,7 @@ use Xmods\CommerceDocuments\WordPress\WpdbNumberGenerator;
 
 final class Plugin
 {
-    private const VERSION = '0.2.1';
+    private const VERSION = '0.2.2';
 
     private function __construct()
     {
@@ -74,11 +74,21 @@ final class Plugin
     {
         global $wpdb;
         $settings = get_option('commerce_documents_wc_settings', []);
-        if (!is_array($settings) || !AdminSettings::isComplete($settings)) {
+        if (!is_array($settings)) {
             throw new \RuntimeException('Complete Commerce Documents settings before generating documents.');
         }
 
-        $seller = (array) $settings['seller'];
+        $seller = AdminSettings::resolveSeller(
+            $settings,
+            static function (string $name, $default) {
+                return get_option($name, $default);
+            }
+        );
+        $resolvedSettings = $settings;
+        $resolvedSettings['seller'] = $seller;
+        if (!AdminSettings::isComplete($resolvedSettings)) {
+            throw new \RuntimeException('Complete Commerce Documents settings before generating documents.');
+        }
         $address = (array) ($seller['address'] ?? []);
         $sellerParty = Party::create(
             (string) ($seller['name'] ?? ''),
