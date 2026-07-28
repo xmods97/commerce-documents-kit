@@ -1,0 +1,31 @@
+{
+    "name": "xmods/commerce-documents-kit",
+    "description": "Universal, framework-independent building blocks for commercial document generation.",
+    "type": "library",
+    "license": "proprietary",
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Xmods\\CommerceDocuments\\": "packages/document-core/src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Xmods\\CommerceDocuments\\Tests\\": "tests/unit/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "platform": {
+            "php": "7.4.33"
+        },
+        "sort-packages": true
+    }
+}
