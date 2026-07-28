@@ -58,4 +58,22 @@ final class DocumentItemTest extends TestCase
             'unit' => ['Service', '  '],
         ];
     }
+
+    public function testPreservesExplicitOrderLineAmountsAfterDiscounts(): void
+    {
+        $currency = Currency::fromCode('EUR');
+        $item = DocumentItem::fromSnapshotAmounts(
+            'Discounted item',
+            Quantity::fromScaledUnits(3, 0),
+            'unit',
+            Money::fromMinorUnits(333, $currency),
+            TaxRate::fromPartsPerMillion(200000),
+            Money::fromMinorUnits(998, $currency),
+            Money::fromMinorUnits(199, $currency)
+        );
+
+        self::assertSame(998, $item->net()->minorUnits());
+        self::assertSame(199, $item->tax()->minorUnits());
+        self::assertSame(1197, $item->gross()->minorUnits());
+    }
 }

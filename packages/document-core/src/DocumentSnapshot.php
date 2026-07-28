@@ -104,7 +104,7 @@ final class DocumentSnapshot
             if (!is_array($item)) {
                 throw new InvalidArgumentException('Invalid snapshot item.');
             }
-            $items[] = DocumentItem::create(
+            $items[] = DocumentItem::fromSnapshotAmounts(
                 (string) ($item['description'] ?? ''),
                 Quantity::fromScaledUnits(
                     (int) ($item['quantity']['scaled_units'] ?? 0),
@@ -112,7 +112,9 @@ final class DocumentSnapshot
                 ),
                 (string) ($item['unit'] ?? ''),
                 Money::fromMinorUnits((int) ($item['unit_net'] ?? 0), $currency),
-                TaxRate::fromPartsPerMillion((int) ($item['tax_rate_ppm'] ?? 0))
+                TaxRate::fromPartsPerMillion((int) ($item['tax_rate_ppm'] ?? 0)),
+                Money::fromMinorUnits((int) ($item['net'] ?? 0), $currency),
+                Money::fromMinorUnits((int) ($item['tax'] ?? 0), $currency)
             );
         }
 

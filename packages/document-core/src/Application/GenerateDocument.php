@@ -61,17 +61,19 @@ final class GenerateDocument
             $request->version
         );
 
-        $this->repository->save($key, $snapshot);
-        $this->events->record(
-            'document.generated',
-            $snapshot->toArray()['document_id'],
-            [
-                'source_type' => $request->sourceType,
-                'source_id' => $request->sourceId,
-                'document_type' => $request->type->value(),
-            ]
-        );
+        $result = $this->repository->save($key, $snapshot);
+        if ($result->wasCreated()) {
+            $this->events->record(
+                'document.generated',
+                $snapshot->toArray()['document_id'],
+                [
+                    'source_type' => $request->sourceType,
+                    'source_id' => $request->sourceId,
+                    'document_type' => $request->type->value(),
+                ]
+            );
+        }
 
-        return $snapshot;
+        return $result->snapshot();
     }
 }

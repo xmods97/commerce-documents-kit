@@ -25,13 +25,19 @@ final class DocumentItem
 
     /** @var TaxRate */
     private $taxRate;
+    /** @var Money|null */
+    private $lineNet;
+    /** @var Money|null */
+    private $lineTax;
 
     private function __construct(
         string $description,
         Quantity $quantity,
         string $unit,
         Money $unitNet,
-        TaxRate $taxRate
+        TaxRate $taxRate,
+        ?Money $lineNet = null,
+        ?Money $lineTax = null
     ) {
         $description = trim($description);
         $unit = trim($unit);
@@ -43,12 +49,19 @@ final class DocumentItem
         if ($unit === '') {
             throw new InvalidArgumentException('Document item unit cannot be empty.');
         }
+        foreach ([$lineNet, $lineTax] as $amount) {
+            if ($amount !== null && !$amount->currency()->equals($unitNet->currency())) {
+                throw new InvalidArgumentException('Snapshot line amounts must use the item currency.');
+            }
+        }
 
         $this->description = $description;
         $this->quantity = $quantity;
         $this->unit = $unit;
         $this->unitNet = $unitNet;
         $this->taxRate = $taxRate;
+        $this->lineNet = $lineNet;
+        $this->lineTax = $lineTax;
     }
 
     public static function create(
@@ -59,6 +72,26 @@ final class DocumentItem
         TaxRate $taxRate
     ): self {
         return new self($description, $quantity, $unit, $unitNet, $taxRate);
+    }
+
+    public static function fromSnapshotAmounts(
+        string $description,
+        Quantity $quantity,
+        string $unit,
+        Money $unitNet,
+        TaxRate $taxRate,
+        Money $lineNet,
+        Money $lineTax
+    ): self {
+        return new self(
+            $description,
+            $quantity,
+            $unit,
+            $unitNet,
+            $taxRate,
+            $lineNet,
+            $lineTax
+        );
     }
 
     public function description(): string
@@ -88,12 +121,12 @@ final class DocumentItem
 
     public function net(): Money
     {
-        return $this->quantity->multiplyMoney($this->unitNet);
+        return $this->lineNet ?? $this->quantity->multiplyMoney($this->unitNet);
     }
 
     public function tax(): Money
     {
-        return $this->taxRate->calculateTax($this->net());
+        return $this->lineTax ?? $this->taxRate->calculateTax($this->net());
     }
 
     public function gross(): Money

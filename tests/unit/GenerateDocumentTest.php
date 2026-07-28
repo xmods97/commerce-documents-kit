@@ -21,6 +21,7 @@ use Xmods\CommerceDocuments\Language;
 use Xmods\CommerceDocuments\Money;
 use Xmods\CommerceDocuments\Party;
 use Xmods\CommerceDocuments\Quantity;
+use Xmods\CommerceDocuments\RepositorySaveResult;
 use Xmods\CommerceDocuments\TaxRate;
 
 final class GenerateDocumentTest extends TestCase
@@ -55,6 +56,22 @@ final class GenerateDocumentTest extends TestCase
 
         self::assertSame($original, $replayed);
         self::assertSame('Original Buyer', $original->toArray()['buyer']['name']);
+    }
+
+    public function testAtomicSavePreventsDuplicateDuringConcurrentRace(): void
+    {
+        $repository = new RacingRepository();
+        $numbers = new SequentialNumbers();
+        $events = new MemoryEvents();
+        $service = new GenerateDocument($repository, $numbers, $events);
+
+        $first = $service->execute($this->request('Original Buyer'));
+        $second = $service->execute($this->request('Original Buyer'));
+
+        self::assertSame($first, $second);
+        self::assertSame(1, $repository->createdCount);
+        self::assertSame(2, $numbers->calls);
+        self::assertCount(1, $events->events);
     }
 
     private function request(string $buyerName): GenerationRequest
@@ -100,10 +117,17 @@ final class MemoryRepository implements DocumentRepository
         return $this->documents[$key->value()] ?? null;
     }
 
-    public function save(IdempotencyKey $key, DocumentSnapshot $snapshot): void
+    public function save(
+        IdempotencyKey $key,
+        DocumentSnapshot $snapshot
+    ): RepositorySaveResult
     {
+        if (isset($this->documents[$key->value()])) {
+            return RepositorySaveResult::existing($this->documents[$key->value()]);
+        }
         $this->documents[$key->value()] = $snapshot;
         ++$this->saveCount;
+        return RepositorySaveResult::created($snapshot);
     }
 }
 
@@ -127,5 +151,31 @@ final class MemoryEvents implements EventLogger
     public function record(string $event, string $documentId, array $context = []): void
     {
         $this->events[] = compact('event', 'documentId', 'context');
+    }
+}
+
+final class RacingRepository implements DocumentRepository
+{
+    /** @var DocumentSnapshot|null */
+    private $stored;
+    /** @var int */
+    public $createdCount = 0;
+
+    public function findByIdempotencyKey(IdempotencyKey $key): ?DocumentSnapshot
+    {
+        // Simulates two workers that both miss the optimistic pre-check.
+        return null;
+    }
+
+    public function save(
+        IdempotencyKey $key,
+        DocumentSnapshot $snapshot
+    ): RepositorySaveResult {
+        if ($this->stored !== null) {
+            return RepositorySaveResult::existing($this->stored);
+        }
+        $this->stored = $snapshot;
+        ++$this->createdCount;
+        return RepositorySaveResult::created($snapshot);
     }
 }

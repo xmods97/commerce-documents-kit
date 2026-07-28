@@ -6,10 +6,14 @@ namespace Xmods\CommerceDocuments\Contracts;
 
 use Xmods\CommerceDocuments\DocumentSnapshot;
 use Xmods\CommerceDocuments\IdempotencyKey;
+use Xmods\CommerceDocuments\RepositorySaveResult;
 
 interface DocumentRepository
 {
     public function findByIdempotencyKey(IdempotencyKey $key): ?DocumentSnapshot;
 
-    public function save(IdempotencyKey $key, DocumentSnapshot $snapshot): void;
+    /**
+     * Atomically inserts by idempotency key or returns the existing snapshot.
+     */
+    public function save(IdempotencyKey $key, DocumentSnapshot $snapshot): RepositorySaveResult;
 }

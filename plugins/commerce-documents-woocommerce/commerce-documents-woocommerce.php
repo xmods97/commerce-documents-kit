@@ -46,4 +46,9 @@ if (!class_exists('WooCommerce')) {
     return;
 }
 
+register_activation_hook(
+    __FILE__,
+    [\Xmods\CommerceDocuments\WordPress\Installer::class, 'activate']
+);
+
 \Xmods\CommerceDocuments\WooCommerce\Plugin::boot();
