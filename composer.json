@@ -11,7 +11,9 @@
     },
     "autoload": {
         "psr-4": {
-            "Xmods\\CommerceDocuments\\": "packages/document-core/src/"
+            "Xmods\\CommerceDocuments\\": "packages/document-core/src/",
+            "Xmods\\CommerceDocuments\\WordPress\\": "packages/wordpress/src/",
+            "Xmods\\CommerceDocuments\\WooCommerce\\": "packages/woocommerce/src/"
         }
     },
     "autoload-dev": {
