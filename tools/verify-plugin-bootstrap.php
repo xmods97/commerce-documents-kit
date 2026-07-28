@@ -53,12 +53,20 @@ if (!class_exists(\Xmods\CommerceDocuments\WooCommerce\AdminController::class)
     throw new RuntimeException('Packaged runtime autoloader did not load the admin runtime.');
 }
 
-if (!isset($GLOBALS['cdk_actions']['woocommerce_order_status_changed'])) {
-    throw new RuntimeException('WooCommerce order status hook was not registered.');
+if (!isset($GLOBALS['cdk_actions']['plugins_loaded'][0][0])
+    || !is_callable($GLOBALS['cdk_actions']['plugins_loaded'][0][0])
+) {
+    throw new RuntimeException('Deferred plugin bootstrap was not registered.');
 }
 
 if (count($GLOBALS['cdk_activation_hooks']) !== 1) {
     throw new RuntimeException('The database installer activation hook was not registered exactly once.');
+}
+
+$GLOBALS['cdk_actions']['plugins_loaded'][0][0]();
+
+if (!isset($GLOBALS['cdk_actions']['woocommerce_order_status_changed'])) {
+    throw new RuntimeException('WooCommerce order status hook was not registered after plugins_loaded.');
 }
 
 fwrite(STDOUT, "Packaged plugin bootstrap verified.\n");

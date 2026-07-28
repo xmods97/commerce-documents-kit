@@ -16,7 +16,7 @@ use Xmods\CommerceDocuments\WordPress\WpdbNumberGenerator;
 
 final class Plugin
 {
-    private const VERSION = '0.2.0';
+    private const VERSION = '0.2.1';
 
     private function __construct()
     {

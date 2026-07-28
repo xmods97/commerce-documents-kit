@@ -18,6 +18,7 @@ final class PluginIsolationTest extends TestCase
         self::assertStringContainsString('Plugin Name: Commerce Documents for WooCommerce', $entry);
         self::assertStringContainsString('Requires Plugins: woocommerce', $entry);
         self::assertStringContainsString('Text Domain: commerce-documents-woocommerce', $entry);
+        self::assertStringContainsString("add_action('plugins_loaded'", $entry);
         self::assertStringNotContainsString('LDC_', $entry);
         self::assertStringNotContainsString('ldc_', $entry);
     }
