@@ -38,11 +38,6 @@ $fixedTimestamp = [DateTime]::SpecifyKind(
     [DateTime]::Parse('2000-01-01T00:00:00'),
     [DateTimeKind]::Utc
 )
-Get-ChildItem -LiteralPath $work -Recurse -Force | ForEach-Object {
-    $_.LastWriteTimeUtc = $fixedTimestamp
-}
-(Get-Item -LiteralPath $work).LastWriteTimeUtc = $fixedTimestamp
-
 if (Test-Path -LiteralPath $zip) {
     Remove-Item -LiteralPath $zip -Force
 }
