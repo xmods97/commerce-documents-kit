@@ -22,8 +22,34 @@ The project is designed to support separate runtimes, including:
 
 ## Current status
 
-The first isolated foundation contains immutable `Currency`, `Money`, and
-`TaxRate` value objects with unit tests. It is not connected to any production
-WordPress runtime.
+The repository now contains an isolated WooCommerce shadow-generation MVP:
+
+- immutable document snapshots and exact integer monetary calculations;
+- configurable order-status policies with no fiscal defaults;
+- atomic idempotency, numbering, event logging, and WordPress database storage;
+- native WooCommerce order mapping;
+- Polish and English HTML rendering;
+- a local, reproducible WooCommerce plugin ZIP build.
+
+The integration is disabled by default. It writes a document snapshot only when
+the `commerce_documents_wc_shadow_enabled` option is strictly `true` and a
+complete `commerce_documents_wc_settings` option has been supplied. The MVP
+does not send email, generate PDF files, submit documents to KSeF, or determine
+whether an invoice is legally required. Those actions remain explicit adapters
+and policy decisions.
+
+## Local verification
+
+Install development dependencies and run:
+
+```text
+composer validate --strict --no-check-publish
+composer test
+pwsh ./tools/build-woocommerce.ps1
+```
+
+The build writes the ZIP and its SHA-256 checksum to `dist/`. The archive is a
+development artifact only; building it does not publish or deploy anything.
 
 See [document lifecycle requirements](docs/document-lifecycle.md).
+See [Poland policy boundary](docs/policies/poland.md).

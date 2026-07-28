@@ -44,3 +44,9 @@ jobs:
           $files = tar -tf ./dist/commerce-documents-woocommerce.zip
           if ($files -match '(^|/)(tests|docs|\.git)(/|$)') { throw 'Development files found in ZIP' }
           if ($files -match 'ldc-invoice-generator') { throw 'Legacy runtime found in ZIP' }
+
+      - name: Verify packaged plugin bootstrap
+        shell: pwsh
+        run: |
+          Expand-Archive ./dist/commerce-documents-woocommerce.zip ./dist/installed
+          php ./tools/verify-plugin-bootstrap.php ./dist/installed/commerce-documents-woocommerce/commerce-documents-woocommerce.php

@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace Xmods\CommerceDocuments\Tests;
 
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
+use RuntimeException;
 use Xmods\CommerceDocuments\Address;
+use Xmods\CommerceDocuments\Currency;
 use Xmods\CommerceDocuments\Language;
+use Xmods\CommerceDocuments\Money;
 use Xmods\CommerceDocuments\Party;
 use Xmods\CommerceDocuments\WooCommerce\NativeOrderAdapter;
 
@@ -49,6 +53,31 @@ final class NativeOrderAdapterTest extends TestCase
         self::assertStringContainsString("'invoice_statuses'", $source);
         self::assertStringNotContainsString('wp_mail(', $source);
         self::assertStringNotContainsString('KSeF', $source);
+    }
+
+    public function testRejectsAmountThatWouldOverflowEffectiveTaxCalculation(): void
+    {
+        $adapter = new NativeOrderAdapter(
+            Party::create(
+                'Seller',
+                '',
+                '',
+                Address::create('Street', '', '00-001', 'City', '', 'PL')
+            ),
+            Language::fromTag('en'),
+            2
+        );
+        $method = new ReflectionMethod($adapter, 'effectiveRate');
+        $method->setAccessible(true);
+        $currency = Currency::fromCode('EUR');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('outside the supported tax calculation range');
+        $method->invoke(
+            $adapter,
+            Money::fromMinorUnits(PHP_INT_MIN, $currency),
+            Money::fromMinorUnits(1, $currency)
+        );
     }
 }
 

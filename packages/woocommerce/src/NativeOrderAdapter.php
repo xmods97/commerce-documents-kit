@@ -174,6 +174,9 @@ final class NativeOrderAdapter
 
     private function effectiveRate(Money $net, Money $tax): TaxRate
     {
+        if ($net->minorUnits() === PHP_INT_MIN || $tax->minorUnits() === PHP_INT_MIN) {
+            throw new RuntimeException('Order amount is outside the supported tax calculation range.');
+        }
         $netUnits = abs($net->minorUnits());
         $taxUnits = abs($tax->minorUnits());
         if ($netUnits === 0 || $taxUnits === 0) {
@@ -181,6 +184,9 @@ final class NativeOrderAdapter
         }
         if ($taxUnits > $netUnits) {
             throw new RuntimeException('Effective tax rate above 100% is unsupported.');
+        }
+        if ($taxUnits > intdiv(PHP_INT_MAX - intdiv($netUnits, 2), 1000000)) {
+            throw new RuntimeException('Order amount is outside the supported tax calculation range.');
         }
         $ppm = intdiv($taxUnits * 1000000 + intdiv($netUnits, 2), $netUnits);
         return TaxRate::fromPartsPerMillion($ppm);
