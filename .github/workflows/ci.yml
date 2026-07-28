@@ -1,0 +1,46 @@
+name: Test and build
+
+on:
+  push:
+    branches:
+      - main
+      - 'codex/**'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          coverage: none
+
+      - name: Install development dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Validate Composer metadata
+        run: composer validate --strict --no-check-publish
+
+      - name: Run unit tests
+        run: composer test
+
+      - name: Check PHP syntax
+        shell: bash
+        run: find packages plugins tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Build local WooCommerce artifact
+        shell: pwsh
+        run: ./tools/build-woocommerce.ps1
+
+      - name: Verify artifact contents
+        shell: pwsh
+        run: |
+          $files = tar -tf ./dist/commerce-documents-woocommerce.zip
+          if ($files -match '(^|/)(tests|docs|\.git)(/|$)') { throw 'Development files found in ZIP' }
+          if ($files -match 'ldc-invoice-generator') { throw 'Legacy runtime found in ZIP' }
