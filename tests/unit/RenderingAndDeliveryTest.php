@@ -38,6 +38,10 @@ final class RenderingAndDeliveryTest extends TestCase
         self::assertStringNotContainsString('<script>', $english);
         self::assertStringContainsString('Sprzedawca', $polish);
         self::assertStringContainsString('Brutto', $polish);
+
+        $formatted = $renderer->render($factory->create('en', 'Buyer'), 2);
+        self::assertStringContainsString('10.00 EUR', $formatted);
+        self::assertStringContainsString('window.print()', $formatted);
     }
 
     public function testDeliveryRendersSendsAndLogsWithoutStoringRecipient(): void

@@ -7,6 +7,7 @@ namespace Xmods\CommerceDocuments\WooCommerce;
 use Throwable;
 use Xmods\CommerceDocuments\Address;
 use Xmods\CommerceDocuments\Application\GenerateDocument;
+use Xmods\CommerceDocuments\DocumentSnapshot;
 use Xmods\CommerceDocuments\Language;
 use Xmods\CommerceDocuments\Party;
 use Xmods\CommerceDocuments\WordPress\WpdbDocumentRepository;
@@ -15,7 +16,7 @@ use Xmods\CommerceDocuments\WordPress\WpdbNumberGenerator;
 
 final class Plugin
 {
-    private const VERSION = '0.1.0';
+    private const VERSION = '0.2.0';
 
     private function __construct()
     {
@@ -25,6 +26,9 @@ final class Plugin
     {
         add_action('init', [self::class, 'loadTranslations']);
         add_action('woocommerce_order_status_changed', [self::class, 'observeOrderStatus'], 10, 4);
+        if (is_admin()) {
+            AdminController::boot();
+        }
     }
 
     public static function loadTranslations(): void
@@ -59,25 +63,19 @@ final class Plugin
         }
 
         try {
-            self::generateShadowSnapshot($order);
+            self::generateForOrder($order);
         } catch (Throwable $error) {
             error_log('Commerce Documents shadow generation failed: ' . $error->getMessage());
             do_action('commerce_documents_generation_failed', $orderId, $error);
         }
     }
 
-    private static function generateShadowSnapshot($order): void
+    public static function generateForOrder($order): DocumentSnapshot
     {
         global $wpdb;
         $settings = get_option('commerce_documents_wc_settings', []);
-        if (!is_array($settings)) {
-            return;
-        }
-        $required = ['seller', 'language', 'proforma_statuses', 'invoice_statuses', 'policy_name'];
-        foreach ($required as $key) {
-            if (!array_key_exists($key, $settings)) {
-                return;
-            }
+        if (!is_array($settings) || !AdminSettings::isComplete($settings)) {
+            throw new \RuntimeException('Complete Commerce Documents settings before generating documents.');
         }
 
         $seller = (array) $settings['seller'];
@@ -122,5 +120,6 @@ final class Plugin
             $snapshot->toArray()['document_id'],
             $order
         );
+        return $snapshot;
     }
 }

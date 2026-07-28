@@ -17,6 +17,8 @@ final class TemplateCatalog
             'net' => 'Net',
             'tax' => 'Tax',
             'gross' => 'Gross',
+            'issued' => 'Issued',
+            'print' => 'Print / save as PDF',
         ],
         'pl' => [
             'seller' => 'Sprzedawca',
@@ -26,6 +28,8 @@ final class TemplateCatalog
             'net' => 'Netto',
             'tax' => 'Podatek',
             'gross' => 'Brutto',
+            'issued' => 'Data wystawienia',
+            'print' => 'Drukuj / zapisz PDF',
         ],
     ];
 

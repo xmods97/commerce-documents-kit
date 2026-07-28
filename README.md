@@ -22,21 +22,27 @@ The project is designed to support separate runtimes, including:
 
 ## Current status
 
-The repository now contains an isolated WooCommerce shadow-generation MVP:
+The repository now contains an isolated WooCommerce test MVP:
 
 - immutable document snapshots and exact integer monetary calculations;
 - configurable order-status policies with no fiscal defaults;
 - atomic idempotency, numbering, event logging, and WordPress database storage;
 - native WooCommerce order mapping;
 - Polish and English HTML rendering;
+- a WooCommerce admin page for seller data, trigger statuses, manual generation,
+  document history, preview, printing, and browser-based PDF saving;
 - a local, reproducible WooCommerce plugin ZIP build.
 
-The integration is disabled by default. It writes a document snapshot only when
-the `commerce_documents_wc_shadow_enabled` option is strictly `true` and a
-complete `commerce_documents_wc_settings` option has been supplied. The MVP
-does not send email, generate PDF files, submit documents to KSeF, or determine
-whether an invoice is legally required. Those actions remain explicit adapters
-and policy decisions.
+The integration is disabled by default. After installation, open
+**WooCommerce → Commerce Documents**, enter the seller details, choose explicit
+WooCommerce statuses for proformas and invoices, and enable automatic test
+generation. Documents may also be generated manually for an existing order
+whose current status matches the configured policy.
+
+The MVP stores immutable snapshots locally and does not send email or submit
+documents to KSeF. The preview can be printed or saved as PDF by the browser.
+Whether an invoice is legally required remains an explicit merchant policy
+decision.
 
 ## Local verification
 

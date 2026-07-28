@@ -32,6 +32,11 @@ function register_activation_hook(string $file, $callback): void
     $GLOBALS['cdk_activation_hooks'][] = [$file, $callback];
 }
 
+function is_admin(): bool
+{
+    return false;
+}
+
 require $entry;
 
 if (!class_exists(\Xmods\CommerceDocuments\WooCommerce\Plugin::class)) {
@@ -40,6 +45,12 @@ if (!class_exists(\Xmods\CommerceDocuments\WooCommerce\Plugin::class)) {
 
 if (!class_exists(\Xmods\CommerceDocuments\WordPress\Installer::class)) {
     throw new RuntimeException('Packaged runtime autoloader did not load the installer.');
+}
+
+if (!class_exists(\Xmods\CommerceDocuments\WooCommerce\AdminController::class)
+    || !class_exists(\Xmods\CommerceDocuments\WooCommerce\AdminSettings::class)
+) {
+    throw new RuntimeException('Packaged runtime autoloader did not load the admin runtime.');
 }
 
 if (!isset($GLOBALS['cdk_actions']['woocommerce_order_status_changed'])) {

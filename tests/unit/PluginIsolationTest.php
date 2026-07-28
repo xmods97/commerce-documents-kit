@@ -29,4 +29,17 @@ final class PluginIsolationTest extends TestCase
             dirname(__DIR__, 2) . '/plugins/commerce-documents-woocommerce/assets/legacy'
         );
     }
+
+    public function testAdminActionsRequireCapabilityAndNonces(): void
+    {
+        $controller = file_get_contents(
+            dirname(__DIR__, 2) . '/packages/woocommerce/src/AdminController.php'
+        );
+
+        self::assertStringContainsString("current_user_can('manage_woocommerce')", $controller);
+        self::assertStringContainsString('check_admin_referer', $controller);
+        self::assertStringContainsString('wp_nonce_url', $controller);
+        self::assertStringNotContainsString('wp_mail(', $controller);
+        self::assertStringNotContainsString('FiscalizationGateway', $controller);
+    }
 }
