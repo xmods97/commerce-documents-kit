@@ -24,7 +24,12 @@ final class DecimalAmountParser
         $whole = $whole === '' ? '0' : $whole;
         $fraction = $matches[3] ?? '';
         $kept = substr(str_pad($fraction, $exponent, '0'), 0, $exponent);
-        $discarded = substr($fraction, $exponent);
+        // PHP 7.4 returns false when the offset is beyond the string,
+        // while PHP 8 returns an empty string. Keep the supported runtimes
+        // behaviorally identical.
+        $discarded = strlen($fraction) > $exponent
+            ? substr($fraction, $exponent)
+            : '';
         $digits = ltrim($whole . $kept, '0');
         $digits = $digits === '' ? '0' : $digits;
 
