@@ -44,6 +44,36 @@ final class SchemaDefinition
                 current_value bigint unsigned NOT NULL,
                 PRIMARY KEY (series_key)
             ) {$charsetCollate};",
+            "CREATE TABLE {$prefix}commerce_document_links (
+                id bigint unsigned NOT NULL AUTO_INCREMENT,
+                document_id varchar(64) NOT NULL,
+                parent_document_id varchar(64) NOT NULL,
+                relationship varchar(32) NOT NULL,
+                created_at datetime NOT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY document_relationship (document_id, relationship),
+                KEY parent_document (parent_document_id)
+            ) {$charsetCollate};",
+            "CREATE TABLE {$prefix}commerce_document_deliveries (
+                id bigint unsigned NOT NULL AUTO_INCREMENT,
+                delivery_id varchar(64) NOT NULL,
+                document_id varchar(64) NOT NULL,
+                channel varchar(32) NOT NULL,
+                recipient_hmac char(64) NOT NULL,
+                delivery_status varchar(32) NOT NULL,
+                attempts int unsigned NOT NULL DEFAULT 0,
+                created_at datetime NOT NULL,
+                updated_at datetime NOT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY delivery_id (delivery_id),
+                KEY document_delivery (document_id),
+                KEY recipient_hmac (recipient_hmac)
+            ) {$charsetCollate};",
+            "CREATE TABLE {$prefix}commerce_document_migrations (
+                version int unsigned NOT NULL,
+                applied_at datetime NOT NULL,
+                PRIMARY KEY (version)
+            ) {$charsetCollate};",
         ];
     }
 }

@@ -49,6 +49,14 @@ compatibility and keep using WooCommerce CRUD APIs.
 4. Add deterministic PDF generation and protected customer delivery.
 5. Pass independent security review before email/PDF leaves the local system.
 
+## Migration boundary
+
+Schema version 2 introduces only additive infrastructure tables for document
+links, delivery audit and migration history. Calling `migrateToCurrentVersion()`
+is intentionally not wired to plugin boot. A future administrator-only action,
+with a backup and explicit approval, must invoke it. The migration does not
+delete, rewrite or encrypt the existing v0.2 snapshot rows.
+
 ## Non-secrets
 
 Never commit seller credentials, actual NIP/address values, customer data,

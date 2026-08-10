@@ -29,6 +29,10 @@ final class WpdbPersistenceTest extends TestCase
         self::assertStringContainsString('UNIQUE KEY idempotency_key', $sql);
         self::assertStringContainsString('PRIMARY KEY (series_key)', $sql);
         self::assertStringContainsString('commerce_document_events', $sql);
+        self::assertStringContainsString('commerce_document_links', $sql);
+        self::assertStringContainsString('commerce_document_deliveries', $sql);
+        self::assertStringContainsString('recipient_hmac char(64)', $sql);
+        self::assertStringContainsString('commerce_document_migrations', $sql);
     }
 
     public function testRepositoryReturnsExistingSnapshotOnDuplicateInsert(): void
