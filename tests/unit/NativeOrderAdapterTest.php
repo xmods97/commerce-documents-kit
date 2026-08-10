@@ -39,16 +39,17 @@ final class NativeOrderAdapterTest extends TestCase
         self::assertSame('2026-07-28T11:00:00+00:00', $mapped->paidAt);
     }
 
-    public function testPluginRequiresExplicitShadowEnableAndConfiguredStatuses(): void
+    public function testPluginKeepsAutomationDisarmedUntilV1PolicyExists(): void
     {
         $source = file_get_contents(
             dirname(__DIR__, 2) . '/packages/woocommerce/src/Plugin.php'
         );
 
         self::assertStringContainsString(
-            "get_option('commerce_documents_wc_shadow_enabled', false) !== true",
+            "get_option('commerce_documents_wc_order_confirmation_enabled', '0') !== '1'",
             $source
         );
+        self::assertStringContainsString('Never reinterpret legacy status selections', $source);
         self::assertStringContainsString("'proforma_statuses'", $source);
         self::assertStringContainsString("'invoice_statuses'", $source);
         self::assertStringNotContainsString('wp_mail(', $source);

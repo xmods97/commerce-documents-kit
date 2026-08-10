@@ -58,7 +58,9 @@ final class Plugin
             self::VERSION
         );
 
-        if (get_option('commerce_documents_wc_shadow_enabled', false) !== true) {
+        // v1 is deliberately disarmed until a paid-order policy is implemented.
+        // Never reinterpret legacy status selections as permission to generate.
+        if ((string) get_option('commerce_documents_wc_order_confirmation_enabled', '0') !== '1') {
             return;
         }
 

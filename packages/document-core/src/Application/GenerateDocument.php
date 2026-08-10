@@ -34,9 +34,7 @@ final class GenerateDocument
         $key = IdempotencyKey::forSource(
             $request->sourceType,
             $request->sourceId,
-            $request->type,
-            $request->policy,
-            $request->version
+            $request->type
         );
         $existing = $this->repository->findByIdempotencyKey($key);
 
