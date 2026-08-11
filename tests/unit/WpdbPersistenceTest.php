@@ -33,6 +33,9 @@ final class WpdbPersistenceTest extends TestCase
         self::assertStringContainsString('commerce_document_deliveries', $sql);
         self::assertStringContainsString('recipient_hmac char(64)', $sql);
         self::assertStringContainsString('commerce_document_migrations', $sql);
+        self::assertStringContainsString('snapshot_cipher longtext NULL', $sql);
+        self::assertStringContainsString('encryption_version smallint unsigned NOT NULL DEFAULT 0', $sql);
+        self::assertStringContainsString('prev_event_hash char(64)', $sql);
     }
 
     public function testRepositoryReturnsExistingSnapshotOnDuplicateInsert(): void

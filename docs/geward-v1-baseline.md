@@ -51,11 +51,18 @@ compatibility and keep using WooCommerce CRUD APIs.
 
 ## Migration boundary
 
-Schema version 2 introduces only additive infrastructure tables for document
+Schema version 3 introduces only additive infrastructure tables for document
 links, delivery audit and migration history. Calling `migrateToCurrentVersion()`
 is intentionally not wired to plugin boot. A future administrator-only action,
 with a backup and explicit approval, must invoke it. The migration does not
 delete, rewrite or encrypt the existing v0.2 snapshot rows.
+
+The v3 schema reserves encrypted snapshot and event-chain fields. The AES-256-GCM
+implementation is fail-closed and reads a base64-encoded 32-byte key only from
+the `COMMERCE_DOCUMENTS_ENCRYPTION_KEY` constant. It is not wired to the legacy
+repository until protected migration and encrypted read paths are complete.
+Encrypted snapshot payloads bind their AAD to `document_id`; audit chains use
+HMAC-SHA-256 and must use the configured key when persistence is wired.
 
 ## Non-secrets
 

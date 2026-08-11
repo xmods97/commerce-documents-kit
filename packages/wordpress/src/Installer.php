@@ -8,7 +8,7 @@ use RuntimeException;
 
 final class Installer
 {
-    public const SCHEMA_VERSION = 2;
+    public const SCHEMA_VERSION = 3;
     private const SCHEMA_VERSION_OPTION = 'commerce_documents_schema_version';
 
     public static function activate(): void

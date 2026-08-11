@@ -23,6 +23,8 @@ final class SchemaDefinition
                 source_type varchar(64) NOT NULL,
                 source_id varchar(191) NOT NULL,
                 snapshot longtext NOT NULL,
+                snapshot_cipher longtext NULL,
+                encryption_version smallint unsigned NOT NULL DEFAULT 0,
                 content_hash char(64) NOT NULL,
                 created_at datetime NOT NULL,
                 PRIMARY KEY (id),
@@ -35,6 +37,8 @@ final class SchemaDefinition
                 document_id varchar(64) NOT NULL,
                 event_name varchar(64) NOT NULL,
                 context longtext NOT NULL,
+                prev_event_hash char(64) NOT NULL DEFAULT '',
+                event_hash char(64) NOT NULL DEFAULT '',
                 created_at datetime NOT NULL,
                 PRIMARY KEY (id),
                 KEY document_id (document_id)
