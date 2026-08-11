@@ -13,6 +13,8 @@ final class DocumentType
     public const INVOICE = 'invoice';
     public const RECEIPT = 'receipt';
     public const CREDIT_NOTE = 'credit_note';
+    public const ORDER_CONFIRMATION = 'order_confirmation';
+    public const CORRECTION = 'correction';
 
     /** @var string */
     private $value;
@@ -32,7 +34,7 @@ final class DocumentType
 
     public static function values(): array
     {
-        return [self::QUOTE, self::PROFORMA, self::INVOICE, self::RECEIPT, self::CREDIT_NOTE];
+        return [self::QUOTE, self::PROFORMA, self::INVOICE, self::RECEIPT, self::CREDIT_NOTE, self::ORDER_CONFIRMATION, self::CORRECTION];
     }
 
     public function value(): string

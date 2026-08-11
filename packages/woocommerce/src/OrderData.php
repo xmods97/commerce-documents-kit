@@ -19,6 +19,8 @@ final class OrderData
     public $createdAt;
     /** @var string */
     public $paidAt;
+    /** @var string */
+    public $paymentMethod;
     /** @var Currency */
     public $currency;
     /** @var Language */
@@ -39,7 +41,8 @@ final class OrderData
         Language $language,
         Party $seller,
         Party $buyer,
-        array $items
+        array $items,
+        string $paymentMethod = ''
     ) {
         if (trim($orderId) === '' || trim($status) === '') {
             throw new InvalidArgumentException('Order ID and status are required.');
@@ -49,6 +52,7 @@ final class OrderData
         $this->status = trim($status);
         $this->createdAt = $createdAt;
         $this->paidAt = $paidAt;
+        $this->paymentMethod = trim($paymentMethod);
         $this->currency = $currency;
         $this->language = $language;
         $this->seller = $seller;

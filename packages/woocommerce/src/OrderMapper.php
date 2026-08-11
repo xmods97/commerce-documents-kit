@@ -21,7 +21,7 @@ final class OrderMapper
             throw new RuntimeException('The current order status does not trigger a document.');
         }
 
-        $issuedAt = $type->value() === 'invoice' && $order->paidAt !== ''
+        $issuedAt = $order->paidAt !== ''
             ? $order->paidAt
             : $generatedAt;
 
