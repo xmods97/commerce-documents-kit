@@ -177,6 +177,64 @@ Neither indicated a defect in the runtime code. Both are recorded here rather th
 
 `vendor/` remains absent and installing it needs network access. Tests were **written and lint-checked but not executed**: `tests/unit/ReviewFixesTest.php` (new, 8 test methods), plus updates to `WpdbPersistenceTest` (3 new methods, `FakeWpdb` now applies `$formats`) and `AdminSettingsTest` (2 new methods, settings shape updated). I make no claim that the suite passes — the equivalent assertions were exercised through `verify-fixes.php`, which does run.
 
-## 6. Environment note (not a product finding)
+## 6. PDF engine pass — verification run
+
+Sections 1–5 describe the review and the fix pass and are kept as the baseline. This section covers the production PDF engine.
+
+### PHP lint
+
+```
+php -l over every *.php outside vendor/
+checked=92  failed=0
+```
+
+### Focused runtime checks
+
+`review/claude/verify-pdf-engine.php` — **73 checks, 73 pass, 0 fail, exit 0**. Full output: `evidence/verify-pdf-engine-output.txt`.
+
+The harness renders documents with `EmbeddedFontPdfRenderer` and then reads them back: it walks the cross-reference table, extracts the streams, and recovers the page text **through the document's own `/ToUnicode` CMap**. That is what makes the Polish assertions meaningful — they prove the glyph ids written to the page correspond to the characters that went in, rather than proving a string appears somewhere in the file.
+
+| Group | Checks | Result |
+|---|---|---|
+| E1 — PDF structure | 6 | pass (header, `%%EOF`, every xref offset lands on its object, `/Root` and `/Info` present, `/Count` matches `/Kids`, every stream `/Length` reaches its `endstream`) |
+| E2 — embedded font | 11 | pass (two font programs embedded, Identity-H with Identity CIDToGIDMap, no `/Differences`, subset tag present, both subsets structurally consistent at 365 glyphs, digest matches, mismatched digest rejected, embedded bytes identical to the committed asset, 18/18 Polish letters distinct and non-zero with outlines) |
+| E3 — Polish round trip | 6 | pass (`Zażółć Gęślą Jaźń Sp. z o.o.`, `ul. Świętokrzyska 5/7`, `Kraków`, Polish and English labels, `Müller & Sønner`, no `?` and no U+FFFD) |
+| E4 — items, taxes, totals | 9 | pass (all three descriptions, quantities with units, unit prices, per-line rates `23%`/`8%`, net `666,00`, tax `142,16`, gross `808,16 PLN`, VAT summary, printed totals equal the snapshot arithmetic) |
+| E5 — COD and corrections | 4 | pass (unpaid notice present when unconfirmed, absent when paid; corrected document number and Polish correction reason printed) |
+| E6 — pagination | 7 | pass (140 items → 6 pages, `/Count` matches, header repeats on 5 continuation pages, footer on every page, 140/140 items present, totals still printed) |
+| E7 — hostile input | 7 | pass (structurally valid output; **no `(` anywhere in any content stream**; every `Tj` preceded by a hex string; no injected token; no NUL or ESC; 20 000-character description bounded; malformed UTF-8 → U+FFFD) |
+| E8 — determinism and size | 7 | pass (three renders byte-identical, no clock reading, dates from the snapshot, 5 000 items → 11 pages / 309 KB of a 350 KB ceiling, omissions declared on the document, normal document 123 KB) |
+| E9 — no remote access | 10 | pass (no network call, single filesystem read, constant font path, style validated against two constants, private constructor, digest check, no URL/active content/external resource, no HTML or CSS stage) |
+| E10 — glyph outlines | 1 | pass (**339/339 subset outlines identical to the source DejaVu Sans**, composites compared recursively through their components) |
+| E11 — delivery posture | 1 | pass (no plugin code path constructs a PDF renderer or a mailer) |
+| E12 — M10 follow-up | 4 | pass (7/7 legacy types still constructible for reading, only `order_confirmation` and `correction` issuable, 5/5 legacy types refused at issue, refusal sits in `GenerateDocument`) |
+
+E10 runs only when the directory holding the source `DejaVuSans.ttf` is passed as the first argument (or via `PDF_FONT_SOURCE_DIR`); it reports `SKIP` otherwise so the harness stays runnable without the backup tree. It was run with the source present:
+
+```
+php review/claude/verify-pdf-engine.php "<…>/dompdf/lib/fonts"
+checks=73 pass=73 fail=0
+```
+
+### Regression
+
+`review/claude/verify-fixes.php` re-run after the engine changes — **59/59 pass, exit 0**, unchanged.
+
+### What could not be verified here
+
+- **No PDF rasteriser exists on this machine** — no Ghostscript, poppler, qpdf or mutool. The rendered document was opened in the local browser's PDF viewer, which loaded it and read `ORDER_CONFIRMATION/2026/000042` from its info dictionary; that shows PDFium accepts the file, not that the page looks right. A single human look at `evidence/pdf-engine-standard.pdf` is the remaining check.
+- **PHPUnit still not run.** `vendor/` remains absent. `tests/unit/EmbeddedFontPdfRendererTest.php` (12 test methods) and the new `GenerateDocumentTest::testLegacyFiscalTypesStayReadableButCannotBeIssued()` are written and lint-clean but **not executed**; I make no claim about the suite's pass/fail state. The equivalent assertions run in `verify-pdf-engine.php`, which does execute. The individual behaviours the test file depends on that are not covered by the harness — glyph mapping for Polish text, for characters outside the subset, and for control characters — were exercised directly and returned `[197,316,199,257,282]`, three identical replacement glyphs, and an empty array respectively.
+
+### Evidence
+
+| File | Contents |
+|---|---|
+| `evidence/verify-pdf-engine-output.txt` | Full harness output |
+| `evidence/pdf-engine-standard.txt` | Text recovered from the standard document through its own `/ToUnicode` CMap |
+| `evidence/pdf-engine-standard.pdf` | Three-line Polish document with the COD notice (git-ignored, as `*.pdf` is) |
+| `evidence/pdf-engine-paginated.pdf` | 140 items across 6 pages |
+| `evidence/pdf-engine-hostile.pdf` | The injection fixture |
+
+## 7. Environment note (not a product finding)
 
 On the second harness run, `SandboxMailer::__construct()` threw `Sandbox mail directory is not writable` for a directory it had itself created on the previous run. This is a Windows/OneDrive ACL artifact of the review sandbox, not a defect in the mailer; the harness was changed to use a unique directory per run and the check then passed. I mention it only so the log is not misread.

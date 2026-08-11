@@ -74,13 +74,36 @@ final class GenerateDocumentTest extends TestCase
         self::assertCount(1, $events->events);
     }
 
-    private function request(string $buyerName): GenerationRequest
+    public function testLegacyFiscalTypesStayReadableButCannotBeIssued(): void
+    {
+        $repository = new MemoryRepository();
+        $service = new GenerateDocument($repository, new SequentialNumbers(), new MemoryEvents());
+
+        foreach ([DocumentType::INVOICE, DocumentType::PROFORMA, DocumentType::RECEIPT,
+                  DocumentType::CREDIT_NOTE, DocumentType::QUOTE] as $legacy) {
+            $type = DocumentType::fromString($legacy);
+            self::assertFalse($type->isIssuable(), $legacy . ' must not be issuable');
+
+            try {
+                $service->execute($this->request('Buyer', $type));
+                self::fail('Issuing ' . $legacy . ' should have been refused.');
+            } catch (\InvalidArgumentException $exception) {
+                self::assertStringContainsString('cannot be issued', $exception->getMessage());
+            }
+        }
+
+        self::assertSame(0, $repository->saveCount);
+        self::assertTrue(DocumentType::fromString(DocumentType::ORDER_CONFIRMATION)->isIssuable());
+        self::assertTrue(DocumentType::fromString(DocumentType::CORRECTION)->isIssuable());
+    }
+
+    private function request(string $buyerName, ?DocumentType $type = null): GenerationRequest
     {
         $currency = Currency::fromCode('EUR');
         $address = Address::create('1 Test Street', '', '00-001', 'Test City', '', 'PL');
 
         return new GenerationRequest(
-            DocumentType::fromString(DocumentType::INVOICE),
+            $type ?? DocumentType::fromString(DocumentType::ORDER_CONFIRMATION),
             DocumentStatus::fromString(DocumentStatus::ISSUED),
             'woocommerce_order',
             '42',

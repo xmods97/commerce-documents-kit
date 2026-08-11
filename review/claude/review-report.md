@@ -14,12 +14,12 @@ Constraints observed: no change to the main Geward repository, no branch or work
 |---|---|---|---|---|
 | Critical | 1 | 1 | – | – |
 | High | 6 | 6 | – | – |
-| Medium | 10 | 8 | 2 (M9, M10) | – |
+| Medium | 10 | 9 | 1 (M9) | – |
 | Low | 6 | 4 | – | 2 (L2, L6) |
 
-PHP lint: 83 files, 0 errors. Focused runtime checks: 59/59 pass, exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
+PHP lint: 92 files, 0 errors. Focused runtime checks: 59/59 (fix pass) and 73/73 (engine pass), both exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
 
-**One blocker is recorded rather than worked around**: the production PDF engine. Details at the end.
+**The blocker recorded in the previous pass — the production PDF engine — is now closed.** The decision, the alternatives and the security review are in `pdf-engine-decision.md`; the summary is at the end of this document.
 
 ---
 
@@ -71,6 +71,8 @@ Corrections became idempotent via a `correction_token` minted once per rendered 
 
 `PdfTextEncoding` maps the Polish alphabet onto codes `0x80..` declared through an `/Encoding /Differences` array over Helvetica. Characters outside the standard set are transliterated rather than dropped, so text degrades legibly instead of becoming punctuation. The renderer now emits parties, an itemised table with quantity/net/tax/gross per line, a totals block, the unpaid-COD notice and correction references.
 
+*(Superseded in the engine pass: `BasicPdfRenderer` is no longer the renderer for anything customer-facing. It is kept for the archived tests and as a fallback.)*
+
 Truncation is UTF-8 safe **without** `ext-mbstring`. I initially used `mb_substr`, then removed it: the package declares no extension requirements beyond openssl, and adding one to `composer.json` would invalidate `composer.lock` with no way to regenerate it offline. Introducing an undeclared runtime dependency to fix a rendering bug would have been a bad trade.
 
 ### M4–M7 — the sandbox mailer
@@ -91,37 +93,40 @@ The header-break check now applies to header fields only. Rejecting newlines in 
 
 `Installer::rollbackPlan()` prints the reversal statements; it does not execute them. `dbDelta` cannot express column or index removal, an automated rollback button beside a migrate button is how the wrong one gets pressed, and the task forbids running migrations — so an executable down-path could not have been tested here even if it were the right design. Backup verification is still an operator attestation; the plugin cannot prove a backup exists, and pretending otherwise would be worse than admitting it.
 
-**M10 — removing legacy document types.** The settings screen and the runtime policy can no longer produce `proforma` or `invoice`, but `DocumentType` still accepts them so historical rows stay readable. Removing the constants belongs with the schema-5 legacy cleanup, not before it.
+**M10 — removing legacy document types.** *(Closed in the engine pass.)* The constants still exist, because `fromString()` has to accept them or historical rows stop being readable — that was always the reason they could not simply be deleted. What was missing was a gate on *issuing* them, and that is now in `GenerateDocument::execute()`: `DocumentType::assertIssuable()` refuses anything outside `order_confirmation` and `correction`, whatever the policy or the caller asks for. The risk M10 described — a second generator of officially-typed documents — is closed in the application layer rather than only in the order policy. Deleting the constants still belongs with the schema-5 cleanup.
 
 **L2, L6 — open.** L2 (exception text in the admin notice) is admin-only and escaped; suppressing it would make failed generations harder to diagnose. L6 (the audit event is written after the document is persisted) needs persistence and logging to become one unit of work, which is the same transactional question deferred in H5 and should be decided with it, not separately.
 
 ---
 
-## Blocker: production PDF engine
+## The PDF engine — how the blocker was closed
 
-**This one I stopped on rather than worked around, as instructed.**
+Full reasoning in `pdf-engine-decision.md`. The part worth repeating here is why the obvious route was not taken.
 
-`BasicPdfRenderer` is no longer lossy, but it is still not what should reach a customer:
+Both candidate engines are physically present on this machine, inside the site backup: a **Dompdf 1.0.2** and an mPDF 8.x, each lifted from a third-party invoicing plugin's `vendor/` directory. Adopting either would have meant copying unpinned, offline-unverifiable code — with no Composer hashes to check it against — into the tree, at a version that predates the remote-font and URI-validation fixes, and carrying an HTML/CSS/SVG/image parser surface that a fixed invoice layout never uses but buyer-controlled strings can reach. The previous review named that plugin family as the cautionary example; taking its bundled copy would have been an odd way to act on that.
 
-- it depends on the **viewer's** Helvetica containing the glyphs named in the `/Differences` array — true in Acrobat, pdf.js and Ghostscript, not guaranteed everywhere, and there is no font embedding;
-- no text wrapping and no pagination — beyond ~24 line items it truncates with a marker instead of flowing to page 2;
-- no logo and no layout fidelity against the Fakturownia reference.
+So the engine is built into the package: `EmbeddedFontPdfRenderer`, a data-to-PDF writer with an embedded TrueType subset, behind the existing `PdfRenderer` interface.
 
-Closing this means embedding a TrueType subset or adopting an engine (Dompdf 3.x being the obvious candidate). Both require a Composer dependency and therefore network access, which is out of scope for this pass, and the engine choice carries its own security surface.
+The insight that makes a dependency-free engine defensible here is that the hard part was never the PDF — it was the font, and fonts can be solved offline. `tools/build-pdf-font.php` runs at build time, subsets DejaVu Sans down to the 339 codepoints the templates need, renumbers the glyph ids and writes the metrics beside it. At request time nothing parses a font: `EmbeddedFont` reads two committed files, checks the program against a recorded SHA-256, and copies the bytes into the document.
 
-**Recommended sequence:** decide the engine → security-review it specifically (for Dompdf: pinned version, `isRemoteEnabled = false`, no external resources in the template — that exact combination is what made the legacy WebToffee plugin exploitable) → only then wire delivery.
+That split is also the security story. There is no URL handling, no image loader, no stylesheet resolution, no markup parser — not disabled, absent — so there is nothing a later configuration change can switch back on. Document text never becomes PDF syntax: it is converted to glyph ids and written as hex, which is why the hostile fixture produces a content stream containing **no `(` at all**.
+
+**The check I would want someone else to look at.** Renumbering glyph ids rewrites the component indices inside composite glyphs, and every Polish diacritic is a composite. A mistake there puts the wrong accent on the wrong letter while every structural check still passes, and only a human looking at the page would notice. So the harness compares all 339 subset glyphs against the source font — simple outlines byte for byte, composites everywhere except the indices, then recursing into what those indices point at. All 339 match.
+
+**What is still open on the engine:** no PDF rasteriser exists offline, so nobody has *seen* a page. The browser's PDF viewer loaded the file and read its title, which shows PDFium accepts it; everything else is proven by reading the file back. One person opening `evidence/pdf-engine-standard.pdf` closes it. There is also no logo and no layout match against the Fakturownia reference — a logo means an image XObject, which reopens a surface this engine does not currently have, and that should be a deliberate decision.
 
 ---
 
 ## Current delivery posture
 
-`SandboxMailer`, `BasicPdfRenderer` and `DeliverDocument` are still referenced only from tests. No plugin code path constructs a Mailer or a PdfRenderer, and no transport call exists in any of them. **Nothing can send anything today**, which remains the correct posture until the engine decision and the end-to-end sandbox stage are done.
+`SandboxMailer`, `BasicPdfRenderer`, `EmbeddedFontPdfRenderer` and `DeliverDocument` are still referenced only from tests and from the verification harnesses. No plugin code path constructs a Mailer or a PdfRenderer — that is now asserted automatically rather than checked by hand — and no transport call exists in any of them. **Nothing can send anything today.** With the engine decided, the remaining gate is the end-to-end sandbox stage and its separate approval; `SandboxMailer` was deliberately left unwired.
 
 ---
 
 ## Limitations
 
-- **PHPUnit was not executed.** New and updated tests are written and lint-clean but unrun; I make no claim about the suite's pass/fail state. The equivalent assertions were exercised through `verify-fixes.php`, which does run and passes 59/59.
+- **PHPUnit was not executed.** New and updated tests are written and lint-clean but unrun; I make no claim about the suite's pass/fail state. The equivalent assertions were exercised through `verify-fixes.php` (59/59) and `verify-pdf-engine.php` (73/73), both of which do run.
+- **No page has been looked at.** The PDF engine is verified by reading its output back, not by rasterising it — no PDF renderer is available offline. See the engine section above.
 - **No WordPress runtime was involved.** wpdb, dbDelta, HPOS declaration and the admin screens are verified by code reading and by a format-applying wpdb stand-in, not against a live WordPress. The C1 fix in particular should be confirmed once against a real wpdb — it is a five-minute check.
 - **The new schema (version 4) has not been applied anywhere.** Adding `chain_position` over existing global-chain rows is the risky step; `preflight()` is designed to block it, but that blocking path has not been exercised against real data.
 - **File permissions could not be verified on this machine** — PHP's `chmod()` on Windows only toggles the read-only bit. The 0600 mode is asserted as a call, not as an observed result.

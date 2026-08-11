@@ -1,0 +1,99 @@
+﻿
+=== E1 — PDF structure ===
+  PASS  starts with a PDF header
+  PASS  ends with %%EOF
+  PASS  xref parses and every offset lands on its object — 15 objects
+  PASS  trailer names a catalog and an info dictionary
+  PASS  /Count matches the number of /Kids — 1 pages
+  PASS  every stream /Length reaches its endstream — checked while parsing
+
+=== E2 — embedded font, not the viewer's ===
+  PASS  a font program is embedded for both styles — regular 53012 B, bold 51780 B
+  PASS  fonts are Identity-H CID fonts with an Identity CIDToGIDMap
+  PASS  no /Differences encoding is relied on
+  PASS  the subset carries a subset tag
+  PASS  embedded F1 subset is structurally consistent — 365 glyphs
+  PASS  embedded F2 subset is structurally consistent — 365 glyphs
+  PASS  the committed font asset matches the digest recorded beside it
+  PASS  a font program that does not match its digest is rejected
+  PASS  the embedded program is the committed asset, byte for byte
+  PASS  every Polish letter maps to a distinct, non-zero glyph
+  PASS  every Polish glyph has an outline in the embedded subset — 18/18
+
+=== E3 — Polish text survives the round trip ===
+  PASS  buyer name round-trips through the document's own CMap
+  PASS  Polish street and city names round-trip
+  PASS  Polish labels are rendered
+  PASS  no character was replaced with "?" or U+FFFD
+  PASS  other Latin scripts render as themselves
+  PASS  English labels are rendered
+
+=== E4 — line items, taxes and totals ===
+  PASS  every line item description appears
+  PASS  quantities and units appear
+  PASS  unit prices appear
+  PASS  per-line tax rates appear
+  PASS  the net total appears — 666,00
+  PASS  the tax total appears — 142,16
+  PASS  the gross total appears and is labelled — 808,16 PLN
+  PASS  a VAT summary is printed
+  PASS  the printed totals equal the snapshot arithmetic
+
+=== E5 — cash on delivery and corrections ===
+  PASS  the unpaid cash-on-delivery notice is printed
+  PASS  a paid document carries no unpaid notice
+  PASS  the corrected document number is printed
+  PASS  the correction reason is printed
+
+=== E6 — pagination ===
+  PASS  a long document flows onto further pages — 6 pages
+  PASS  /Count matches the pages actually written
+  PASS  the table header repeats on continuation pages
+  PASS  every page carries a footer with its number
+  PASS  the first and the last line item both appear
+  PASS  no line item is lost at a page boundary — 140/140 present
+  PASS  the totals still print after the table
+
+=== E7 — hostile and malformed input ===
+  PASS  hostile input still produces a structurally valid PDF
+  PASS  no literal string appears in any content stream
+  PASS  document text reaches the page only as hex glyph ids
+  PASS  no injected operator survives
+  PASS  no NUL or control byte reaches the content stream
+  PASS  the overlong description is bounded, not emitted whole
+  PASS  malformed UTF-8 becomes the replacement character, not a different letter
+
+=== E8 — determinism and bounded size ===
+  PASS  the same snapshot renders byte-identically — sha256 9a5724bb6a12139c
+  PASS  no clock reading enters the file
+  PASS  document dates come from the snapshot
+  PASS  a 5000-item order stays within the page cap — 11 pages
+  PASS  the omitted lines are declared on the document
+  PASS  output size stays bounded — 309 KB of a 350 KB ceiling
+  PASS  a typical three-line document is small — 123 KB
+
+=== E9 — no remote resources, no network, no traversal ===
+  PASS  no network call in any renderer class — clean
+  PASS  the only filesystem access is the font asset in EmbeddedFont — EmbeddedFont:file_get_contents
+  PASS  the font path is a constant, with no caller-supplied segment
+  PASS  the style is validated against two constants before it reaches the path
+  PASS  EmbeddedFont cannot be constructed with an arbitrary path
+  PASS  the font program is checked against a recorded digest before use
+  PASS  no URL, remote reference or external resource in the output
+  PASS  no active content in the output
+  PASS  no external font, image or stylesheet is referenced
+  PASS  no HTML or CSS stage exists in the engine
+
+=== E10 — glyph outlines are the original ones ===
+  PASS  every subset outline is identical to the source font outline — 339 glyphs compared, including composites and their components
+
+=== E11 — delivery posture unchanged ===
+  PASS  no plugin code path constructs a PDF renderer or a mailer — nothing wired
+
+=== E12 — M10 follow-up: legacy types readable, not issuable ===
+  PASS  every legacy type is still constructible, so historical rows stay readable — quote, proforma, invoice, receipt, credit_note, order_confirmation, correction
+  PASS  only order_confirmation and correction may be issued — order_confirmation, correction
+  PASS  issuing a legacy fiscal type is refused — invoice, proforma, receipt, credit_note, quote
+  PASS  the refusal sits in the application service, not only in the order policy
+
+checks=73 pass=73 fail=0

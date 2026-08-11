@@ -8,18 +8,19 @@ use Xmods\CommerceDocuments\Contracts\PdfRenderer;
 use Xmods\CommerceDocuments\DocumentSnapshot;
 
 /**
- * Dependency-free PDF renderer for local and sandbox output.
+ * Superseded by EmbeddedFontPdfRenderer — do not use for anything a customer
+ * sees. Kept for the archived tests and as the fallback described in
+ * review/claude/pdf-engine-decision.md.
  *
  * Renders the full document: parties, every line item with quantity, net, tax and
  * gross, and the document totals. Polish text is preserved through
  * PdfTextEncoding rather than stripped to ASCII.
  *
- * Known limitation — see review/claude/review-report.md: this renderer relies on
- * the viewer's standard-14 Helvetica containing the Polish glyphs named in the
- * /Differences array. That holds in Acrobat, pdf.js and Ghostscript, but is not
- * guaranteed everywhere, and there is no font embedding, no text wrapping and no
- * pagination. It must not be the renderer used for customer-facing delivery; an
- * engine with an embedded font is still required for that.
+ * Why it is not the production engine: it relies on the viewer's standard-14
+ * Helvetica containing the Polish glyphs named in the /Differences array — true
+ * in Acrobat, pdf.js and Ghostscript, not guaranteed everywhere — and it embeds
+ * no font, wraps no text and cannot paginate. EmbeddedFontPdfRenderer carries its
+ * own font subset and closes all three gaps.
  */
 final class BasicPdfRenderer implements PdfRenderer
 {

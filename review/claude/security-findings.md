@@ -6,18 +6,20 @@ Range originally reviewed: `20cd191..83950ae` (dff7778, b3caed5, 848cead, 83950a
 
 Severity key: **Critical** = data loss or unusable system / **High** = blocks external PDF or email delivery / **Medium** = must fix before production / **Low** = hygiene.
 
-## Status summary (updated after the fix pass)
+## Status summary (updated after the PDF engine pass)
 
-| Severity | Total | Fixed | Open |
-|---|---|---|---|
-| Critical | 1 | 1 | 0 |
-| High | 6 | 6 | 0 |
-| Medium | 10 | 9 | 1 |
-| Low | 6 | 4 | 2 |
+| Severity | Total | Fixed | Partially fixed | Open |
+|---|---|---|---|---|
+| Critical | 1 | 1 | – | – |
+| High | 6 | 6 | – | – |
+| Medium | 10 | 9 | 1 (M9) | – |
+| Low | 6 | 4 | – | 2 (L2, L6) |
 
-Verification: `review/claude/verify-fixes.php` — 59 checks, 59 pass, exit 0. Output in `evidence/verify-fixes-output.txt`. PHP lint clean on 83 files.
+Verification: `review/claude/verify-fixes.php` — 59 checks, 59 pass, exit 0 (`evidence/verify-fixes-output.txt`).
+`review/claude/verify-pdf-engine.php` — 73 checks, 73 pass, exit 0 (`evidence/verify-pdf-engine-output.txt`).
+PHP lint clean on 92 files.
 
-**One blocker remains and is deliberately not worked around** — see *Blocker: production PDF engine* at the end of this document. It does not reopen any finding above, but it does gate customer-facing delivery.
+**The PDF engine blocker is closed.** A production engine was selected, built and reviewed — see *Production PDF engine* below and `pdf-engine-decision.md`. Delivery remains unwired by design; that is the separate sandbox stage, not a blocker.
 
 ---
 
@@ -95,7 +97,7 @@ For COD specifically, WooCommerce never sets `date_paid`, so every COD order is 
 >
 > Verified: valid header/trailer, all 7 xref offsets resolve, `startxref` correct, both line items and totals present, no `?` substitution, long multibyte names cut safely.
 >
-> **Still blocked for customer delivery** — see *Blocker: production PDF engine*.
+> **Closed for customer delivery in the engine pass.** `BasicPdfRenderer` is superseded by `EmbeddedFontPdfRenderer`, which embeds the glyph outlines instead of naming them, wraps text and paginates. See *Production PDF engine* below.
 
 **File:** `packages/document-core/src/Rendering/BasicPdfRenderer.php:65-69, 14-30`
 
@@ -173,7 +175,7 @@ For a correction workflow this is the audit property that matters most.
 | M7 | **FIXED** — `chmod 0600` after exclusive create; `*.eml` and `sandbox-mail/` added to `.gitignore`. *Caveat: PHP's `chmod()` on Windows only toggles the read-only bit, so the mode is not observable on this machine — the check asserts the call and records the platform limit.* |
 | M8 | **FIXED** — `FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true)` on `before_woocommerce_init`, guarded by `class_exists`. |
 | M9 | **PARTIALLY FIXED** — `preflight()` now returns `blockers` and `warnings`; `migrateToCurrentVersion()` refuses to run while a blocker is present (duplicate audit chain positions, unauthenticatable legacy rows), and the admin screen hides the migrate button while blocked. `Installer::rollbackPlan()` emits the schema-4 reversal statements with prefix validation. **Not fixed by design:** the rollback is printed, not executed — `dbDelta` cannot express column or index removal, an automated rollback button beside a migrate button is how the wrong one gets pressed, and the task forbids running migrations, so an executable down-path could not be tested here. Backup verification remains an operator attestation. |
-| M10 | **PARTIALLY FIXED** — the settings screen and the runtime policy can no longer produce `proforma` or `invoice`, but `DocumentType` still accepts them so historical rows stay readable. Removing the constants belongs with the schema-5 legacy cleanup. |
+| M10 | **FIXED** — `GenerateDocument::execute()` now calls `DocumentType::assertIssuable()`, so no new document of a legacy fiscal type can be created regardless of what a policy or a caller asks for; only `order_confirmation` and `correction` are issuable. `fromString()` still accepts every legacy value, so historical rows stay readable — that was the reason the constants could not simply be deleted. Removing the constants outright still belongs with the schema-5 legacy cleanup, but the risk M10 described (a second generator of officially-typed documents) is now closed in the application layer rather than only in the order policy. Verified: 5/5 legacy types refused at issue, 7/7 still constructible for reading. |
 
 ---
 
@@ -218,17 +220,39 @@ These were tested, not assumed:
 
 ---
 
-## Blocker: production PDF engine — **OPEN, requires an owner decision**
+## Production PDF engine — **CLOSED**, with its own security review
 
-`BasicPdfRenderer` no longer loses Polish text or line items, but it is still not a renderer I would put in front of a customer, and this cannot be closed from inside the current constraints:
+The engine chosen is `EmbeddedFontPdfRenderer`: a data-to-PDF writer with an embedded TrueType subset, built into the package. The alternatives and why they lost are in `pdf-engine-decision.md`; the short version is that the two engines physically present on this machine are a Dompdf **1.0.2** and an mPDF taken out of third-party plugin vendor directories — unpinned, unverifiable offline, and years behind the advisories that matter for exactly this use.
 
-- It relies on the **viewer's** standard-14 Helvetica containing the glyphs named in the `/Differences` array. That holds in Acrobat, pdf.js and Ghostscript; it is not guaranteed everywhere, and there is no font embedding.
-- There is **no text wrapping and no pagination** — a document with more than ~24 line items truncates with a "further lines not shown" marker rather than flowing onto page 2.
-- No logo, no layout fidelity against the Fakturownia reference.
+The review below treats the new engine as an untrusted component and asks the same questions that would have been asked of Dompdf.
 
-Closing it properly means either embedding a TrueType subset or adopting an engine (Dompdf 3.x is the obvious candidate). Both need a Composer dependency, which needs network access — explicitly out of scope for this pass — and the engine choice is an architectural decision with its own security surface. Per the task's instruction, I stopped here rather than working around the constraint.
+| Requirement | Finding | How it was verified |
+|---|---|---|
+| Remote resources disabled | Not applicable in the usual sense: **there is no code that resolves a reference into a fetch.** No URL handling, no image loader, no `@font-face`, no stylesheet resolution. There is nothing to switch off, and so nothing that can be switched back on by a future configuration change. | Source scan of all four renderer classes for `curl_*`, `fsockopen`, `stream_socket_client`, `file_get_contents('http…')`, `wp_remote_*`, `get_headers`, `dns_get_record` — clean. |
+| No external URLs, images or fonts in the output | The generated file contains no `http://`, `https://`, `/URI`, `/Launch`, `/GoToR` or `/EmbeddedFile`; no `/XObject` or `/Image` at all; exactly two `/FontFile2` streams and no `/FontFile` or `/FontFile3`. | Asserted against a rendered document. |
+| No active content | No `/JavaScript`, `/JS`, `/OpenAction`, `/AA`, `/RichMedia` or `/XFA`. | Asserted against a rendered document. |
+| No filesystem traversal | One filesystem read in the whole engine: `EmbeddedFont` opens `__DIR__ . '/../../../resources/fonts/dejavu-sans-' . $style . '.ttf'`. `$style` is compared against two class constants and rejected before it reaches the path; the constructor is `private` and the only entry points are `regular()` and `bold()`. No caller-supplied value can influence a path. | Source assertions plus the absence of any other `fopen`/`file_get_contents`/`include` in the four classes. |
+| Safe input handling | Snapshot text never becomes PDF syntax. It is converted to glyph ids and emitted as hex strings, so `(`, `)`, `\`, newlines and operators cannot be expressed at all. Control bytes are dropped; malformed UTF-8 becomes U+FFFD instead of being reinterpreted as a different codepoint; newlines collapse to spaces; every field is length-capped. | A hostile fixture (`) Tj … (PWNED`, `\\ ( ) << >> endstream endobj`, NUL/CR/LF/ESC, broken UTF-8, a 20 000-character description, an injected `correction_of` and a hostile buyer name) renders to a structurally valid PDF whose content streams contain **no `(` at all**, no injected token, and no control byte. Every `Tj` in the stream is preceded by a hex string. |
+| No HTML or CSS stage | The renderer contains no `DOMDocument`, no `loadHTML`, no markup. The entire parser class of defect is absent rather than configured away. | Source assertion. |
+| Deterministic output | No clock reading, no randomness, no compression. `/CreationDate` and `/ModDate` come from the snapshot's own dates. | Three renders — twice from one instance, once from a fresh instance — are byte-identical; the file contains no current date. |
+| Bounded document size | 300 line items rendered (the remainder is declared on the document), 30 pages maximum, per-field caps of 300/120/400 characters. | A 5 000-item order yields 11 pages and 309 KB against a 350 KB ceiling; a normal three-line document is 123 KB, of which 105 KB is the two font subsets. |
+| Polish Unicode | Rendered from embedded outlines, not from the viewer's fonts. All 18 Polish letters map to distinct non-zero glyphs, each with an outline present in the subset. | Text is recovered from the finished PDF **through the document's own `/ToUnicode` CMap** — `Zażółć Gęślą Jaźń Sp. z o.o.`, `ul. Świętokrzyska 5/7`, `Kraków` all round-trip, with no `?` and no U+FFFD. `Müller & Sønner` round-trips too. |
+| Line items, taxes, totals | Every description, quantity with unit, unit price, per-line VAT rate, net, tax and gross is printed; a VAT summary groups net/tax/gross by rate; the printed totals equal the snapshot arithmetic. | Read back from the rendered document; 140/140 line items present across 6 pages, none lost at a page boundary. |
+| COD notice | The unpaid cash-on-delivery notice is boxed at the top of the document when `payment_method = cod` and the payment is unconfirmed, and absent when it is confirmed. | Both directions asserted. |
+| Correction references | The corrected document number and the correction reason are printed. | Asserted, including Polish text in the reason. |
+| No network calls | None exist. Nothing in the engine opens a socket or issues a request. | Source scan, as above. |
 
-**Recommended next step:** decide the engine, then run a focused security review of it (for Dompdf specifically: pinned version, `isRemoteEnabled = false`, no external resources in the template — the exact chain that made the legacy WebToffee plugin exploitable).
+### The check that carries the most weight
+
+Subsetting renumbers glyph ids, which means rewriting the component indices inside composite glyphs — and every Polish diacritic is a composite. An error there would place the wrong accent on the wrong letter while every structural check still passed; it would be visible only to a human looking at the page.
+
+The harness therefore compares each of the 339 subset glyphs against the same glyph in the source DejaVu Sans: simple outlines byte for byte, composites everywhere except the indices, whose targets are then compared the same way, recursively. **All 339 match.** The outlines in the document are DejaVu's own.
+
+### Residual risk on the engine
+
+**No visual confirmation was possible offline.** No PDF rasteriser exists on this machine (no Ghostscript, poppler, qpdf or mutool). The document was opened in the local browser's PDF viewer, which loaded it and read the title from its info dictionary — that shows PDFium accepts the file, not that the page looks right. One person should open `evidence/pdf-engine-standard.pdf` once. Everything else about the engine is proven by reading the file back.
+
+Also outstanding, and deliberately not attempted: no logo, and no layout fidelity against the Fakturownia reference. A logo means an image XObject, which reopens a surface this engine currently does not have, and that should be an explicit decision rather than a side effect.
 
 ---
 
@@ -238,7 +262,7 @@ Original blocking set: C1, H1, H4, H2, H3, H5, H6, M4, M5, M6, M8.
 
 | Item | Status |
 |---|---|
-| C1, H1, H2, H3, H5, H6, M4, M5, M6, M8 | Fixed and verified |
-| H4 | Fixed as a defect; **the engine blocker above remains** |
+| C1, H1, H2, H3, H4, H5, H6, M4, M5, M6, M8 | Fixed and verified |
+| Production PDF engine | Selected, built, reviewed; open item is a single visual confirmation |
 
-Nothing in the plugin wires a Mailer or a PdfRenderer, so there is still no code path that can send anything. Delivery remains gated on the PDF engine decision, and on the separate end-to-end sandbox stage.
+Nothing in the plugin wires a Mailer or a PdfRenderer — asserted automatically — so there is still no code path that can send anything. Delivery is now gated only on the separate end-to-end sandbox stage and its approval, not on the engine.
