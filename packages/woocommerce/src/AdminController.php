@@ -167,6 +167,7 @@ final class AdminController
                     . '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin-top:6px">'
                     . '<input type="hidden" name="action" value="commerce_documents_correct">'
                     . '<input type="hidden" name="document_id" value="' . esc_attr($document['document_id']) . '">'
+                    . '<input type="text" name="correction_buyer_name" maxlength="191" placeholder="Correct buyer name">'
                     . '<input type="text" name="correction_note" required maxlength="191" placeholder="Correction note">'
                     . wp_nonce_field('commerce_documents_correct_' . $document['document_id'], '_wpnonce', true, false)
                     . '<button class="button">Create correction</button></form></td></tr>';
@@ -232,6 +233,7 @@ final class AdminController
         $documentId = isset($_POST['document_id']) ? sanitize_text_field(wp_unslash($_POST['document_id'])) : '';
         self::authorize('commerce_documents_correct_' . $documentId);
         $note = isset($_POST['correction_note']) ? sanitize_text_field(wp_unslash($_POST['correction_note'])) : '';
+        $buyerName = isset($_POST['correction_buyer_name']) ? sanitize_text_field(wp_unslash($_POST['correction_buyer_name'])) : '';
         if ($documentId === '' || $note === '') {
             self::redirect('failed', 'Document and correction note are required.');
         }
@@ -257,6 +259,9 @@ final class AdminController
             $data['version'] = ((int) ($data['version'] ?? 1)) + 1;
             $data['metadata']['correction_of'] = $documentId;
             $data['metadata']['correction_note'] = $note;
+            if ($buyerName !== '') {
+                $data['buyer']['name'] = $buyerName;
+            }
             $snapshot = DocumentSnapshot::fromArray($data);
             (new WpdbDocumentRepository($wpdb, $wpdb->prefix . 'commerce_documents', self::codec()))->save($key, $snapshot);
             $wpdb->insert($wpdb->prefix . 'commerce_document_links', [
