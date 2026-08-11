@@ -25,8 +25,11 @@ final class Installer
      * Runs only when an administrator explicitly wires and authorizes it.
      * Plugin boot never invokes this method automatically.
      */
-    public static function migrateToCurrentVersion(): void
+    public static function migrateToCurrentVersion(bool $backupConfirmed = false): void
     {
+        if (!$backupConfirmed) {
+            throw new RuntimeException('A verified database backup confirmation is required.');
+        }
         global $wpdb;
         if (!is_object($wpdb)) {
             throw new RuntimeException('WordPress database is unavailable.');
@@ -36,7 +39,25 @@ final class Installer
         }
 
         self::applySchema($wpdb);
+        $inserted = $wpdb->insert(
+            $wpdb->prefix . 'commerce_document_migrations',
+            ['version' => self::SCHEMA_VERSION, 'applied_at' => gmdate('Y-m-d H:i:s')],
+            ['%d', '%s']
+        );
+        if ($inserted === false && stripos((string) $wpdb->last_error, 'duplicate') === false) {
+            throw new RuntimeException('Migration history could not be recorded.');
+        }
         update_option(self::SCHEMA_VERSION_OPTION, self::SCHEMA_VERSION, false);
+    }
+
+    /** @return array{installed_version:int,target_version:int,upgrade_required:bool} */
+    public static function preflight(): array
+    {
+        return [
+            'installed_version' => self::installedSchemaVersion(),
+            'target_version' => self::SCHEMA_VERSION,
+            'upgrade_required' => self::upgradeRequired(),
+        ];
     }
 
     private static function applySchema($wpdb): void

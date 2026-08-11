@@ -6,6 +6,7 @@ namespace Xmods\CommerceDocuments\WooCommerce;
 
 use Throwable;
 use Xmods\CommerceDocuments\DocumentSnapshot;
+use Xmods\CommerceDocuments\WordPress\Installer;
 use Xmods\CommerceDocuments\Rendering\HtmlRenderer;
 use Xmods\CommerceDocuments\Rendering\TemplateCatalog;
 
@@ -17,6 +18,7 @@ final class AdminController
         add_action('admin_init', [self::class, 'registerSettings']);
         add_action('admin_post_commerce_documents_generate', [self::class, 'generate']);
         add_action('admin_post_commerce_documents_view', [self::class, 'view']);
+        add_action('admin_post_commerce_documents_migrate', [self::class, 'migrate']);
     }
 
     public static function menu(): void
@@ -122,6 +124,19 @@ final class AdminController
         echo '<label>Order ID <input type="number" min="1" required name="order_id"></label> ';
         submit_button('Generate test document', 'secondary', 'submit', false);
         echo '</form><h2>Generated documents</h2>';
+        $migration = Installer::preflight();
+        echo '<hr><h2>Database migration</h2><p>Installed schema: ' . esc_html((string) $migration['installed_version'])
+            . ' / target: ' . esc_html((string) $migration['target_version']) . '</p>';
+        if ($migration['upgrade_required']) {
+            echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">'
+                . '<input type="hidden" name="action" value="commerce_documents_migrate">';
+            wp_nonce_field('commerce_documents_migrate');
+            echo '<label><input type="checkbox" name="backup_confirmed" value="1" required> I verified a current database backup.</label> ';
+            submit_button('Apply protected schema migration', 'secondary', 'submit', false);
+            echo '</form>';
+        } else {
+            echo '<p>Schema is current. No migration is required.</p>';
+        }
         if ($documents === []) {
             echo '<p>No documents have been generated yet.</p>';
         } else {
@@ -173,6 +188,17 @@ final class AdminController
         $exponent = function_exists('wc_get_price_decimals') ? (int) wc_get_price_decimals() : null;
         echo (new HtmlRenderer(new TemplateCatalog()))->render($snapshot, $exponent);
         exit;
+    }
+
+    public static function migrate(): void
+    {
+        self::authorize('commerce_documents_migrate');
+        try {
+            Installer::migrateToCurrentVersion(isset($_POST['backup_confirmed']) && (string) $_POST['backup_confirmed'] === '1');
+            self::redirect('migrated');
+        } catch (Throwable $error) {
+            self::redirect('failed', $error->getMessage());
+        }
     }
 
     private static function authorize(string $nonce): void
