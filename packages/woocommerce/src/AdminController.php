@@ -305,7 +305,8 @@ final class AdminController
             "SELECT document_id, document_type, source_id, snapshot, snapshot_cipher, created_at FROM {$table} ORDER BY id DESC LIMIT 50",
             ARRAY_A
         );
-        foreach ((array) $rows as &$row) {
+        $filtered = [];
+        foreach ((array) $rows as $row) {
             $data = self::decodeRow($row);
             $row['document_number'] = is_array($data) ? (string) ($data['document_number'] ?? '') : '';
             $row['audit_count'] = (int) $wpdb->get_var($wpdb->prepare(
@@ -313,13 +314,13 @@ final class AdminController
                 $row['document_id']
             ));
             if ($search !== '' && stripos(implode(' ', [(string) $row['document_id'], (string) $row['document_number'], (string) $row['document_type'], (string) $row['source_id']]), $search) === false) {
-                unset($row);
                 continue;
             }
             unset($row['snapshot']);
             unset($row['snapshot_cipher']);
+            $filtered[] = $row;
         }
-        return array_values((array) $rows);
+        return $filtered;
     }
 
     private static function find(string $documentId): ?DocumentSnapshot
