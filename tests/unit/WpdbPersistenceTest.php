@@ -18,6 +18,8 @@ use Xmods\CommerceDocuments\Party;
 use Xmods\CommerceDocuments\Quantity;
 use Xmods\CommerceDocuments\TaxRate;
 use Xmods\CommerceDocuments\WordPress\SchemaDefinition;
+use Xmods\CommerceDocuments\WordPress\EncryptedSnapshotCodec;
+use Xmods\CommerceDocuments\WordPress\OpenSslAesGcmCipher;
 use Xmods\CommerceDocuments\WordPress\WpdbDocumentRepository;
 
 final class WpdbPersistenceTest extends TestCase
@@ -41,7 +43,11 @@ final class WpdbPersistenceTest extends TestCase
     public function testRepositoryReturnsExistingSnapshotOnDuplicateInsert(): void
     {
         $wpdb = new FakeWpdb();
-        $repository = new WpdbDocumentRepository($wpdb, 'wp_commerce_documents');
+        $repository = new WpdbDocumentRepository(
+            $wpdb,
+            'wp_commerce_documents',
+            new EncryptedSnapshotCodec(new OpenSslAesGcmCipher(str_repeat('k', 32)))
+        );
         $key = IdempotencyKey::forSource(
             'woocommerce_order',
             '42',
@@ -113,6 +119,11 @@ final class FakeWpdb
     public function get_var(string $sql)
     {
         return $this->documents[$this->preparedKey]['snapshot'] ?? null;
+    }
+
+    public function get_row(string $sql, $output)
+    {
+        return $this->documents[$this->preparedKey] ?? null;
     }
 
     public function insert(string $table, array $data, array $formats)

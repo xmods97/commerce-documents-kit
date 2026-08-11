@@ -13,6 +13,9 @@ use Xmods\CommerceDocuments\Party;
 use Xmods\CommerceDocuments\WordPress\WpdbDocumentRepository;
 use Xmods\CommerceDocuments\WordPress\WpdbEventLogger;
 use Xmods\CommerceDocuments\WordPress\WpdbNumberGenerator;
+use Xmods\CommerceDocuments\WordPress\ConfigKeyProvider;
+use Xmods\CommerceDocuments\WordPress\EncryptedSnapshotCodec;
+use Xmods\CommerceDocuments\WordPress\OpenSslAesGcmCipher;
 
 final class Plugin
 {
@@ -121,7 +124,11 @@ final class Plugin
 
         $prefix = $wpdb->prefix;
         $service = new GenerateDocument(
-            new WpdbDocumentRepository($wpdb, $prefix . 'commerce_documents'),
+            new WpdbDocumentRepository(
+                $wpdb,
+                $prefix . 'commerce_documents',
+                new EncryptedSnapshotCodec(new OpenSslAesGcmCipher(ConfigKeyProvider::encryptionKey()))
+            ),
             new WpdbNumberGenerator($wpdb, $prefix . 'commerce_document_sequences'),
             new WpdbEventLogger($wpdb, $prefix . 'commerce_document_events')
         );
