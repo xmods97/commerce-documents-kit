@@ -1,0 +1,61 @@
+﻿=== T1: wpdb insert format misalignment (WpdbDocumentRepository::save) ===
+cipher payload length: 1377
+value stored when the column is bound with %d: '0'
+RESULT: decrypt of the persisted value fails -> InvalidArgumentException: Encrypted payload version is invalid.
+
+=== T2: AES-GCM AAD binding and tamper detection ===
+AAD swap: detected -> Document decryption or integrity verification failed.
+bit flip: detected -> Document decryption or integrity verification failed.
+
+=== T3: legacy plaintext fallback accepts unauthenticated JSON ===
+plaintext snapshot column round-trips with no MAC check: buyer=Attacker Supplied
+content_hash recomputed from data, not verified against stored column: c427c581b191ac1f...
+
+=== T4: BasicPdfRenderer structural validity + Unicode ===
+bytes: 838 | header: %PDF-1.4
+xref size declared: 6 | entries: 5 | all offsets resolve: yes
+startxref: 655 -> xref
+text shown in PDF:
+  | ORDER_CONFIRMATION ORDER_CONFIRMATION/2026/000001
+  | Issued: 2026-07-28T10:00:00+00:00
+  | Seller: GEWARD
+  | Buyer: Za???????? g????l?? ja????
+  | Nieoplacone - platnosc przy odbiorze
+  | Gross: 14429 PLN
+items rendered: NO — line items are absent from the PDF
+
+=== T5: AuditEventHash chain under concurrency ===
+sequential chain ok: yes
+two writers reading the same tip produce two valid successors: yes (chain forks silently)
+
+=== T6: SandboxMailer file handling ===
+multi-line body: REJECTED -> Sandbox email headers or recipient are invalid. (a normal email body cannot contain a newline)
+file: doc_review_0001-20260811140350.eml | perms: 0666 | bytes: 1563
+--- head ---
+To: buyer@example.test
+Subject: Zamowienie
+Content-Type: multipart/mixed; boundary="cdk-8d09df8011dfec63dc098af6"
+
+--cdk-8d09df8011dfec63dc098af6
+Content-Type: text/plain; charset=UTF-8
+
+Tresc wiadomosci
+
+--cdk-8d09df8011dfec63dc098af6
+Content-Type: 
+MIME-Version header present: NO
+From header present: NO
+
+=== T7: header injection and traversal attempts (expect rejection) ===
+case 0: rejected -> Sandbox email headers or recipient are invalid.
+case 1: rejected -> Sandbox email headers or recipient are invalid.
+case 2: rejected -> Sandbox email headers or recipient are invalid.
+
+=== T8: filename collision within the same second ===
+files before=1 after=1 (two sends in the same second)
+
+=== T9: snapshot metadata validation ===
+rejected: ["Ok"] -> Snapshot metadata key is invalid.
+rejected: ["bad key"] -> Snapshot metadata key is invalid.
+rejected: ["payment_method"] -> Snapshot metadata values must be scalar.
+rejected: ["UPPER"] -> Snapshot metadata key is invalid.
