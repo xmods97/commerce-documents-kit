@@ -24,6 +24,19 @@ final class AdminSettings
             $language = 'pl-PL';
         }
 
+        $codPolicy = (string) ($input['cod_policy'] ?? PaidOrderPolicy::COD_POLICY_NEVER);
+        if (!in_array($codPolicy, [PaidOrderPolicy::COD_POLICY_NEVER, PaidOrderPolicy::COD_POLICY_STATUS_ONLY], true)) {
+            $codPolicy = PaidOrderPolicy::COD_POLICY_NEVER;
+        }
+        $offlineMethods = array_values(array_filter(array_map(
+            static function ($method): string {
+                return strtolower(trim((string) $method));
+            },
+            preg_split('/[\s,]+/', (string) ($input['cod_offline_methods'] ?? '')) ?: []
+        ), static function (string $method): bool {
+            return $method !== '' && preg_match('/^[a-z0-9_\-]{1,64}$/D', $method) === 1;
+        }));
+
         return [
             'seller_source' => ($input['seller_source'] ?? '') === 'woocommerce'
                 ? 'woocommerce'
@@ -42,9 +55,14 @@ final class AdminSettings
                 ],
             ],
             'language' => $language,
-            'proforma_statuses' => $cleanStatuses($input['proforma_statuses'] ?? []),
-            'invoice_statuses' => $cleanStatuses($input['invoice_statuses'] ?? []),
-            'policy_name' => 'woocommerce-status-policy',
+            // Only paid-class statuses drive generation now. The proforma/invoice
+            // status matrices are gone: those types are issued manually elsewhere.
+            'paid_statuses' => $cleanStatuses(
+                $input['paid_statuses'] ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES
+            ),
+            'cod_policy' => $codPolicy,
+            'cod_offline_methods' => $offlineMethods,
+            'policy_name' => 'paid-order-confirmation',
             'policy_version' => 1,
         ];
     }
@@ -88,9 +106,6 @@ final class AdminSettings
             && in_array((string) ($settings['language'] ?? ''), ['pl-PL', 'en'], true)
             && trim((string) ($settings['policy_name'] ?? '')) !== ''
             && (int) ($settings['policy_version'] ?? 0) >= 1
-            && (
-                (array) ($settings['proforma_statuses'] ?? []) !== []
-                || (array) ($settings['invoice_statuses'] ?? []) !== []
-            );
+            && (array) ($settings['paid_statuses'] ?? []) !== [];
     }
 }

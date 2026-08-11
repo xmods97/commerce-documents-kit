@@ -13,6 +13,9 @@
 *.sql
 *.sql.gz
 *.pdf
+# Sandbox mail captures contain recipient addresses and rendered documents.
+*.eml
+sandbox-mail/
 *.xls
 *.xlsx
 *.csv

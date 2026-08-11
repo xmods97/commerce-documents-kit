@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Commerce Documents for WooCommerce
- * Description: Universal proforma and invoice generation foundation for WooCommerce orders.
+ * Description: Issues internal order-confirmation documents for paid WooCommerce orders. Fiscal invoices are not generated automatically.
  * Version: 0.2.2
  * Requires at least: 6.0
  * Requires PHP: 7.4
@@ -41,6 +41,22 @@ register_activation_hook(
     __FILE__,
     [\Xmods\CommerceDocuments\WordPress\Installer::class, 'activate']
 );
+
+/*
+ * High-Performance Order Storage. All order access goes through the WooCommerce
+ * CRUD API (wc_get_order, $order->get_*), never through post meta or wp_posts,
+ * so the plugin is compatible with both storage backends. Without this
+ * declaration WooCommerce marks the plugin incompatible and blocks HPOS.
+ */
+add_action('before_woocommerce_init', static function (): void {
+    if (class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility(
+            'custom_order_tables',
+            __FILE__,
+            true
+        );
+    }
+});
 
 add_action('plugins_loaded', static function (): void {
     if (!class_exists('WooCommerce')) {

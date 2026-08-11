@@ -26,11 +26,14 @@ final class SchemaDefinition
                 snapshot_cipher longtext NULL,
                 encryption_version smallint unsigned NOT NULL DEFAULT 0,
                 content_hash char(64) NOT NULL,
+                superseded_by varchar(64) NOT NULL DEFAULT '',
+                superseded_at datetime NULL,
                 created_at datetime NOT NULL,
                 PRIMARY KEY (id),
                 UNIQUE KEY idempotency_key (idempotency_key),
                 UNIQUE KEY document_id (document_id),
-                KEY source (source_type, source_id)
+                KEY source (source_type, source_id),
+                KEY superseded_by (superseded_by)
             ) {$charsetCollate};",
             "CREATE TABLE {$prefix}commerce_document_events (
                 id bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -41,7 +44,8 @@ final class SchemaDefinition
                 event_hash char(64) NOT NULL DEFAULT '',
                 created_at datetime NOT NULL,
                 PRIMARY KEY (id),
-                KEY document_id (document_id)
+                KEY document_id (document_id),
+                UNIQUE KEY chain_position (document_id, prev_event_hash)
             ) {$charsetCollate};",
             "CREATE TABLE {$prefix}commerce_document_sequences (
                 series_key varchar(96) NOT NULL,

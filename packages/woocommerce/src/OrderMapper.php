@@ -18,12 +18,22 @@ final class OrderMapper
     ): GenerationRequest {
         $type = $policy->documentTypeFor($order);
         if ($type === null) {
-            throw new RuntimeException('The current order status does not trigger a document.');
+            throw new RuntimeException('This order does not qualify for a document under the active policy.');
         }
 
-        $issuedAt = $order->paidAt !== ''
-            ? $order->paidAt
-            : $generatedAt;
+        // Prefer the gateway's payment date so the document carries the moment the
+        // money was confirmed, not the moment the request happened to run.
+        $issuedAt = $order->paidAt !== '' ? $order->paidAt : $generatedAt;
+
+        $metadata = $policy instanceof PaidOrderPolicy
+            ? $policy->decision($order)
+            : [
+                'payment_method' => $order->paymentMethod,
+                'payment_confirmed' => $order->paidAt !== '' ? 'yes' : 'no',
+                'payment_status' => $order->paidAt !== '' ? 'paid' : 'unpaid',
+            ];
+        $metadata['order_number'] = $order->orderId;
+        $metadata['order_status'] = $order->status;
 
         return new GenerationRequest(
             $type,
@@ -39,11 +49,7 @@ final class OrderMapper
             $order->items,
             $generatedAt,
             $issuedAt,
-            [
-                'payment_method' => $order->paymentMethod,
-                'payment_confirmed' => $order->paidAt !== '' ? 'yes' : 'no',
-                'payment_status' => $order->paidAt !== '' ? 'paid' : 'unpaid',
-            ]
+            $metadata
         );
     }
 }

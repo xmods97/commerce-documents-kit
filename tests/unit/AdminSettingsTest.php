@@ -6,6 +6,7 @@ namespace Xmods\CommerceDocuments\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Xmods\CommerceDocuments\WooCommerce\AdminSettings;
+use Xmods\CommerceDocuments\WooCommerce\PaidOrderPolicy;
 
 final class AdminSettingsTest extends TestCase
 {
@@ -23,27 +24,52 @@ final class AdminSettingsTest extends TestCase
                 ],
             ],
             'language' => 'pl-PL',
-            'proforma_statuses' => ['pending', 'unknown'],
-            'invoice_statuses' => ['completed'],
+            'paid_statuses' => ['processing', 'unknown'],
             'policy_name' => 'injected-policy',
             'policy_version' => 99,
         ], ['pending', 'processing', 'completed']);
 
         self::assertSame('Seller', $settings['seller']['name']);
         self::assertSame('PL', $settings['seller']['address']['country_code']);
-        self::assertSame(['pending'], $settings['proforma_statuses']);
-        self::assertSame(['completed'], $settings['invoice_statuses']);
-        self::assertSame('woocommerce-status-policy', $settings['policy_name']);
+        self::assertSame(['processing'], $settings['paid_statuses']);
+        self::assertSame('paid-order-confirmation', $settings['policy_name']);
         self::assertSame(1, $settings['policy_version']);
         self::assertTrue(AdminSettings::isComplete($settings));
+    }
+
+    public function testProformaAndInvoiceStatusMatricesAreNoLongerAccepted(): void
+    {
+        $settings = AdminSettings::sanitize([
+            'proforma_statuses' => ['pending'],
+            'invoice_statuses' => ['completed'],
+        ], ['pending', 'completed']);
+
+        self::assertArrayNotHasKey('proforma_statuses', $settings);
+        self::assertArrayNotHasKey('invoice_statuses', $settings);
+    }
+
+    public function testCashOnDeliveryDefaultsToNeverPaidAndFiltersGatewayIds(): void
+    {
+        $settings = AdminSettings::sanitize([], []);
+        self::assertSame(PaidOrderPolicy::COD_POLICY_NEVER, $settings['cod_policy']);
+        self::assertSame([], $settings['cod_offline_methods']);
+
+        $enrolled = AdminSettings::sanitize([
+            'cod_policy' => PaidOrderPolicy::COD_POLICY_STATUS_ONLY,
+            'cod_offline_methods' => 'COD, bacs  cheque, not valid!',
+        ], []);
+        self::assertSame(PaidOrderPolicy::COD_POLICY_STATUS_ONLY, $enrolled['cod_policy']);
+        self::assertSame(['cod', 'bacs', 'cheque'], $enrolled['cod_offline_methods']);
+
+        $bogus = AdminSettings::sanitize(['cod_policy' => 'anything'], []);
+        self::assertSame(PaidOrderPolicy::COD_POLICY_NEVER, $bogus['cod_policy']);
     }
 
     public function testIncompleteSettingsCannotGenerate(): void
     {
         $settings = AdminSettings::sanitize([
             'seller' => ['name' => 'Seller', 'address' => []],
-            'proforma_statuses' => [],
-            'invoice_statuses' => [],
+            'paid_statuses' => [],
         ], ['pending']);
 
         self::assertFalse(AdminSettings::isComplete($settings));

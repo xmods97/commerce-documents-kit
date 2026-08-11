@@ -111,13 +111,18 @@ final class Plugin
 
         $adapter = new NativeOrderAdapter(
             $sellerParty,
-            Language::fromTag((string) $settings['language']),
+            Language::fromTag((string) ($settings['language'] ?? 'pl-PL')),
             function_exists('wc_get_price_decimals') ? (int) wc_get_price_decimals() : 2
         );
-        $policy = new ConfigurableStatusPolicy(
-            (array) $settings['proforma_statuses'],
-            (array) $settings['invoice_statuses'],
-            (string) $settings['policy_name'],
+        // Only the paid-order policy is wired. ConfigurableStatusPolicy remains in
+        // the tree for the archived v0.2 tests but is never constructed at runtime:
+        // it can emit fiscal `invoice` / `proforma` types, which this module must
+        // not issue automatically while Fakturownia is the system of record.
+        $policy = new PaidOrderPolicy(
+            (array) ($settings['paid_statuses'] ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES),
+            (string) ($settings['cod_policy'] ?? PaidOrderPolicy::COD_POLICY_NEVER),
+            (array) ($settings['cod_offline_methods'] ?? []),
+            (string) ($settings['policy_name'] ?? 'paid-order-confirmation'),
             (int) ($settings['policy_version'] ?? 1)
         );
         $request = (new OrderMapper())->map($adapter->map($order), $policy, gmdate(DATE_ATOM));

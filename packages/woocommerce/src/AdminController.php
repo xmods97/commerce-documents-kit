@@ -9,6 +9,7 @@ use Xmods\CommerceDocuments\DocumentStatus;
 use Xmods\CommerceDocuments\DocumentSnapshot;
 use Xmods\CommerceDocuments\DocumentType;
 use Xmods\CommerceDocuments\IdempotencyKey;
+use Xmods\CommerceDocuments\WordPress\AuditChainVerifier;
 use Xmods\CommerceDocuments\WordPress\ConfigKeyProvider;
 use Xmods\CommerceDocuments\WordPress\EncryptedSnapshotCodec;
 use Xmods\CommerceDocuments\WordPress\Installer;
@@ -82,8 +83,9 @@ final class AdminController
             }
         );
         $address = (array) ($seller['address'] ?? []);
-        $proforma = (array) ($settings['proforma_statuses'] ?? []);
-        $invoice = (array) ($settings['invoice_statuses'] ?? []);
+        $paidStatuses = (array) ($settings['paid_statuses'] ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES);
+        $codPolicy = (string) ($settings['cod_policy'] ?? PaidOrderPolicy::COD_POLICY_NEVER);
+        $offlineMethods = implode(', ', (array) ($settings['cod_offline_methods'] ?? []));
         $enabled = get_option('commerce_documents_wc_shadow_enabled', false) === true;
         $statuses = function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [];
         $search = isset($_GET['cdk_search']) ? sanitize_text_field(wp_unslash($_GET['cdk_search'])) : '';
@@ -118,16 +120,31 @@ final class AdminController
         echo '<input type="hidden" name="commerce_documents_wc_shadow_enabled" value="0">';
         echo '<label><input type="checkbox" name="commerce_documents_wc_shadow_enabled" value="1" '
             . checked($enabled, true, false) . '> Enable automatic test generation</label>';
+        echo '<p class="description">Only <strong>order confirmations</strong> are issued, and only for orders the policy '
+            . 'considers paid. Fiscal invoices and proformas are never generated here.</p>';
         echo '<table class="widefat striped" style="max-width:900px;margin-top:16px"><thead><tr>'
-            . '<th>WooCommerce status</th><th>Create proforma</th><th>Create invoice</th></tr></thead><tbody>';
+            . '<th>WooCommerce status</th><th>Counts as paid</th></tr></thead><tbody>';
         foreach ($statuses as $key => $label) {
             $status = strpos($key, 'wc-') === 0 ? substr($key, 3) : $key;
-            echo '<tr><td>' . esc_html($label) . '</td><td><input type="checkbox" name="commerce_documents_wc_settings[proforma_statuses][]" value="'
-                . esc_attr($status) . '" ' . checked(in_array($status, $proforma, true), true, false)
-                . '></td><td><input type="checkbox" name="commerce_documents_wc_settings[invoice_statuses][]" value="'
-                . esc_attr($status) . '" ' . checked(in_array($status, $invoice, true), true, false) . '></td></tr>';
+            echo '<tr><td>' . esc_html($label) . '</td><td><input type="checkbox" name="commerce_documents_wc_settings[paid_statuses][]" value="'
+                . esc_attr($status) . '" ' . checked(in_array($status, $paidStatuses, true), true, false)
+                . '></td></tr>';
         }
         echo '</tbody></table>';
+        echo '<table class="form-table"><tr><th>Offline gateways (cash on delivery, bank transfer)</th><td>'
+            . '<label><input type="radio" name="commerce_documents_wc_settings[cod_policy]" value="'
+            . esc_attr(PaidOrderPolicy::COD_POLICY_NEVER) . '" '
+            . checked($codPolicy, PaidOrderPolicy::COD_POLICY_NEVER, false)
+            . '> Never treat as paid (recommended — no payment date exists)</label><br>'
+            . '<label><input type="radio" name="commerce_documents_wc_settings[cod_policy]" value="'
+            . esc_attr(PaidOrderPolicy::COD_POLICY_STATUS_ONLY) . '" '
+            . checked($codPolicy, PaidOrderPolicy::COD_POLICY_STATUS_ONLY, false)
+            . '> Treat the enrolled gateways below as paid on a paid status alone</label>'
+            . '<p><input class="regular-text" type="text" name="commerce_documents_wc_settings[cod_offline_methods]" value="'
+            . esc_attr($offlineMethods) . '" placeholder="cod, bacs"></p>'
+            . '<p class="description">WooCommerce never records a payment date for offline gateways, so they are '
+            . 'unpaid by default. Enrolling one means a document is issued before the money arrives.</p>'
+            . '</td></tr></table>';
         submit_button('Save settings');
         echo '</form><hr><h2>Generate for an existing order</h2><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
         echo '<input type="hidden" name="action" value="commerce_documents_generate">';
@@ -141,36 +158,59 @@ final class AdminController
         $migration = Installer::preflight();
         echo '<hr><h2>Database migration</h2><p>Installed schema: ' . esc_html((string) $migration['installed_version'])
             . ' / target: ' . esc_html((string) $migration['target_version']) . '</p>';
-        if ($migration['upgrade_required']) {
+        foreach ((array) ($migration['warnings'] ?? []) as $warning) {
+            echo '<div class="notice notice-warning inline"><p>' . esc_html((string) $warning) . '</p></div>';
+        }
+        foreach ((array) ($migration['blockers'] ?? []) as $blocker) {
+            echo '<div class="notice notice-error inline"><p>' . esc_html((string) $blocker) . '</p></div>';
+        }
+        if ($migration['upgrade_required'] && ($migration['blockers'] ?? []) === []) {
             echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">'
                 . '<input type="hidden" name="action" value="commerce_documents_migrate">';
             wp_nonce_field('commerce_documents_migrate');
             echo '<label><input type="checkbox" name="backup_confirmed" value="1" required> I verified a current database backup.</label> ';
             submit_button('Apply protected schema migration', 'secondary', 'submit', false);
             echo '</form>';
+            echo '<p class="description">Rollback is intentionally manual. Installer::rollbackPlan() prints the exact '
+                . 'reversal statements to run against a restored backup.</p>';
+        } elseif ($migration['upgrade_required']) {
+            echo '<p><strong>Migration is blocked until the errors above are resolved.</strong></p>';
         } else {
             echo '<p>Schema is current. No migration is required.</p>';
         }
         if ($documents === []) {
             echo '<p>No documents have been generated yet.</p>';
         } else {
-            echo '<table class="widefat striped"><thead><tr><th>Number</th><th>Type</th><th>Order</th><th>Created</th><th>Audit</th><th>Actions</th></tr></thead><tbody>';
+            echo '<table class="widefat striped"><thead><tr><th>Number</th><th>Type</th><th>Order</th><th>Created</th>'
+                . '<th>State</th><th>Audit</th><th>Actions</th></tr></thead><tbody>';
             foreach ($documents as $document) {
                 $url = wp_nonce_url(
                     admin_url('admin-post.php?action=commerce_documents_view&document_id=' . rawurlencode($document['document_id'])),
                     'commerce_documents_view_' . $document['document_id']
                 );
+                $supersededBy = (string) ($document['superseded_by'] ?? '');
+                $state = $supersededBy !== ''
+                    ? 'Replaced by ' . $supersededBy
+                    : ($document['readable'] ? 'Issued' : 'UNREADABLE');
                 echo '<tr><td>' . esc_html($document['document_number']) . '</td><td>'
                     . esc_html($document['document_type']) . '</td><td>#' . esc_html($document['source_id'])
-                    . '</td><td>' . esc_html($document['created_at']) . '</td><td>' . esc_html((string) $document['audit_count']) . '</td><td><a class="button" target="_blank" href="'
-                    . esc_url($url) . '">View / print</a>'
-                    . '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin-top:6px">'
-                    . '<input type="hidden" name="action" value="commerce_documents_correct">'
-                    . '<input type="hidden" name="document_id" value="' . esc_attr($document['document_id']) . '">'
-                    . '<input type="text" name="correction_buyer_name" maxlength="191" placeholder="Correct buyer name">'
-                    . '<input type="text" name="correction_note" required maxlength="191" placeholder="Correction note">'
-                    . wp_nonce_field('commerce_documents_correct_' . $document['document_id'], '_wpnonce', true, false)
-                    . '<button class="button">Create correction</button></form></td></tr>';
+                    . '</td><td>' . esc_html($document['created_at'])
+                    . '</td><td>' . esc_html($state)
+                    . '</td><td>' . esc_html((string) $document['audit_count']) . '</td><td><a class="button" target="_blank" href="'
+                    . esc_url($url) . '">View / print</a>';
+                if ($supersededBy === '' && $document['readable']) {
+                    // The token is minted once per rendered form, so a resubmitted or
+                    // double-clicked form resolves to the same idempotency key.
+                    echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin-top:6px">'
+                        . '<input type="hidden" name="action" value="commerce_documents_correct">'
+                        . '<input type="hidden" name="document_id" value="' . esc_attr($document['document_id']) . '">'
+                        . '<input type="hidden" name="correction_token" value="' . esc_attr(bin2hex(random_bytes(16))) . '">'
+                        . '<input type="text" name="correction_buyer_name" maxlength="191" placeholder="Correct buyer name">'
+                        . '<input type="text" name="correction_note" required maxlength="191" placeholder="Correction note">'
+                        . wp_nonce_field('commerce_documents_correct_' . $document['document_id'], '_wpnonce', true, false)
+                        . '<button class="button">Create correction</button></form>';
+                }
+                echo '</td></tr>';
             }
             echo '</tbody></table>';
         }
@@ -208,12 +248,34 @@ final class AdminController
         header('Content-Type: text/html; charset=UTF-8');
         $exponent = function_exists('wc_get_price_decimals') ? (int) wc_get_price_decimals() : null;
         $html = (new HtmlRenderer(new TemplateCatalog()))->render($snapshot, $exponent);
-        $audit = '<section style="max-width:900px;margin:24px auto;padding:0 20px"><h2>Audit trail</h2><ul>';
+
+        $banner = '';
+        $supersession = self::supersession($documentId);
+        if ($supersession['superseded_by'] !== '') {
+            $banner = '<div style="max-width:900px;margin:24px auto;padding:12px 20px;border:2px solid #b32d2e;color:#b32d2e">'
+                . '<strong>' . esc_html__('This document has been replaced.', 'commerce-documents-woocommerce') . '</strong> '
+                . esc_html(sprintf('Superseded by %s on %s.', $supersession['superseded_by'], $supersession['superseded_at']))
+                . '</div>';
+        }
+
+        global $wpdb;
+        $verification = (new AuditChainVerifier(
+            $wpdb,
+            $wpdb->prefix . 'commerce_document_events',
+            ConfigKeyProvider::auditKey()
+        ))->verify($documentId);
+
+        $audit = '<section style="max-width:900px;margin:24px auto;padding:0 20px"><h2>Audit trail</h2>';
+        $audit .= $verification['valid']
+            ? '<p>Chain verified: ' . esc_html((string) $verification['events']) . ' event(s).</p>'
+            : '<p style="color:#b32d2e"><strong>Chain verification failed</strong> at position '
+                . esc_html((string) $verification['broken_at']) . ' — ' . esc_html($verification['reason']) . '</p>';
+        $audit .= '<ul>';
         foreach (self::events($documentId) as $event) {
             $audit .= '<li>' . esc_html($event['created_at'] . ' — ' . $event['event_name']) . '</li>';
         }
         $audit .= '</ul></section>';
-        echo str_replace('</body>', $audit . '</body>', $html);
+        echo str_replace('<body>', '<body>' . $banner, str_replace('</body>', $audit . '</body>', $html));
         exit;
     }
 
@@ -237,18 +299,57 @@ final class AdminController
         if ($documentId === '' || $note === '') {
             self::redirect('failed', 'Document and correction note are required.');
         }
+        $token = isset($_POST['correction_token']) ? sanitize_text_field(wp_unslash($_POST['correction_token'])) : '';
+        if (preg_match('/^[a-f0-9]{32}$/D', $token) !== 1) {
+            self::redirect('failed', 'A correction token is required.');
+        }
+
+        global $wpdb;
+        $documents = $wpdb->prefix . 'commerce_documents';
+        $repository = new WpdbDocumentRepository($wpdb, $documents, self::codec());
+        $logger = new WpdbEventLogger(
+            $wpdb,
+            $wpdb->prefix . 'commerce_document_events',
+            ConfigKeyProvider::auditKey()
+        );
+
+        // The token is minted once per rendered form, so a resubmitted form resolves
+        // to the same idempotency key and cannot mint a second correction or burn a
+        // second sequence number.
+        $sourceId = $documentId . ':' . $token;
+        $type = DocumentType::fromString(DocumentType::CORRECTION);
+        $key = IdempotencyKey::forSource('commerce_document_correction', $sourceId, $type);
+        $correctionId = 'doc_' . substr($key->value(), 0, 24);
+        $claimed = false;
+
         try {
-            global $wpdb;
+            if ($repository->findByIdempotencyKey($key) !== null) {
+                // Same form submitted twice. Nothing to do, and no number consumed.
+                self::redirect('corrected');
+            }
+
             $original = self::find($documentId);
             if ($original === null) {
                 throw new \RuntimeException('Document not found.');
             }
+
+            // Claim supersession before allocating a number, so two concurrent
+            // corrections of the same document cannot both proceed.
+            $claim = $wpdb->query($wpdb->prepare(
+                "UPDATE {$documents} SET superseded_by = %s, superseded_at = %s
+                 WHERE document_id = %s AND superseded_by = ''",
+                $correctionId,
+                gmdate('Y-m-d H:i:s'),
+                $documentId
+            ));
+            if ((int) $claim !== 1) {
+                throw new \RuntimeException('This document has already been corrected.');
+            }
+            $claimed = true;
+
             $now = gmdate(DATE_ATOM);
             $data = $original->toArray();
-            $sourceId = $documentId . ':' . gmdate('YmdHis') . ':' . bin2hex(random_bytes(8));
-            $type = DocumentType::fromString(DocumentType::CORRECTION);
-            $key = IdempotencyKey::forSource('commerce_document_correction', $sourceId, $type);
-            $data['document_id'] = 'doc_' . substr($key->value(), 0, 24);
+            $data['document_id'] = $correctionId;
             $data['document_number'] = (new WpdbNumberGenerator($wpdb, $wpdb->prefix . 'commerce_document_sequences'))->next($type, $now);
             $data['document_type'] = DocumentType::CORRECTION;
             $data['status'] = DocumentStatus::ISSUED;
@@ -257,26 +358,44 @@ final class AdminController
             $data['created_at'] = $now;
             $data['issued_at'] = $now;
             $data['version'] = ((int) ($data['version'] ?? 1)) + 1;
+            $data['metadata'] = (array) ($data['metadata'] ?? []);
             $data['metadata']['correction_of'] = $documentId;
             $data['metadata']['correction_note'] = $note;
             if ($buyerName !== '') {
+                $data['metadata']['corrected_buyer_name_from'] = (string) ($data['buyer']['name'] ?? '');
                 $data['buyer']['name'] = $buyerName;
             }
             $snapshot = DocumentSnapshot::fromArray($data);
-            (new WpdbDocumentRepository($wpdb, $wpdb->prefix . 'commerce_documents', self::codec()))->save($key, $snapshot);
+            $repository->save($key, $snapshot);
+
             $wpdb->insert($wpdb->prefix . 'commerce_document_links', [
-                'document_id' => $snapshot->toArray()['document_id'],
+                'document_id' => $correctionId,
                 'parent_document_id' => $documentId,
                 'relationship' => 'correction',
                 'created_at' => gmdate('Y-m-d H:i:s'),
             ], ['%s', '%s', '%s', '%s']);
-            (new WpdbEventLogger($wpdb, $wpdb->prefix . 'commerce_document_events', ConfigKeyProvider::auditKey()))->record(
-                'document.corrected',
-                $snapshot->toArray()['document_id'],
-                ['parent_document_id' => $documentId]
-            );
+
+            // Both sides of the relationship are recorded. Without the event on the
+            // original, its audit trail would look untouched after being replaced.
+            $logger->record('document.replaced', $documentId, [
+                'superseded_by' => $correctionId,
+                'correction_note' => $note,
+            ]);
+            $logger->record('document.corrected', $correctionId, [
+                'parent_document_id' => $documentId,
+                'correction_note' => $note,
+            ]);
             self::redirect('corrected');
         } catch (Throwable $error) {
+            if ($claimed) {
+                // Release the claim so the document stays correctable.
+                $wpdb->query($wpdb->prepare(
+                    "UPDATE {$documents} SET superseded_by = '', superseded_at = NULL
+                     WHERE document_id = %s AND superseded_by = %s",
+                    $documentId,
+                    $correctionId
+                ));
+            }
             self::redirect('failed', $error->getMessage());
         }
     }
@@ -306,26 +425,45 @@ final class AdminController
             return [];
         }
         $table = $wpdb->prefix . 'commerce_documents';
-        $rows = $wpdb->get_results(
-            "SELECT document_id, document_type, source_id, snapshot, snapshot_cipher, created_at FROM {$table} ORDER BY id DESC LIMIT 50",
-            ARRAY_A
-        );
-        $filtered = [];
-        foreach ((array) $rows as $row) {
-            $data = self::decodeRow($row);
-            $row['document_number'] = is_array($data) ? (string) ($data['document_number'] ?? '') : '';
-            $row['audit_count'] = (int) $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}commerce_document_events WHERE document_id = %s",
-                $row['document_id']
-            ));
-            if ($search !== '' && stripos(implode(' ', [(string) $row['document_id'], (string) $row['document_number'], (string) $row['document_type'], (string) $row['source_id']]), $search) === false) {
-                continue;
-            }
-            unset($row['snapshot']);
-            unset($row['snapshot_cipher']);
-            $filtered[] = $row;
+        $events = $wpdb->prefix . 'commerce_document_events';
+
+        // Filtering happens in SQL so the search covers the whole table, not just
+        // the newest page. document_number lives inside the ciphertext and cannot
+        // be matched here; it is matched in PHP against the current page only, and
+        // the UI says so.
+        $where = '';
+        $params = [];
+        if ($search !== '') {
+            $like = '%' . $wpdb->esc_like($search) . '%';
+            $where = 'WHERE document_id LIKE %s OR document_type LIKE %s OR source_id LIKE %s';
+            $params = [$like, $like, $like];
         }
-        return $filtered;
+        $sql = "SELECT d.document_id, d.document_type, d.source_id, d.snapshot, d.snapshot_cipher,
+                       d.content_hash, d.superseded_by, d.created_at,
+                       (SELECT COUNT(*) FROM {$events} e WHERE e.document_id = d.document_id) AS audit_count
+                FROM {$table} d {$where} ORDER BY d.id DESC LIMIT 50";
+        $rows = $params === []
+            ? $wpdb->get_results($sql, ARRAY_A)
+            : $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
+
+        $documents = [];
+        foreach ((array) $rows as $row) {
+            // One unreadable row must not take down the whole screen.
+            try {
+                $snapshot = WpdbDocumentRepository::hydrate($row, self::codec());
+                $row['document_number'] = $snapshot === null
+                    ? ''
+                    : (string) $snapshot->toArray()['document_number'];
+                $row['readable'] = $snapshot !== null;
+            } catch (Throwable $error) {
+                $row['document_number'] = '';
+                $row['readable'] = false;
+            }
+            $row['audit_count'] = (int) ($row['audit_count'] ?? 0);
+            unset($row['snapshot'], $row['snapshot_cipher'], $row['content_hash']);
+            $documents[] = $row;
+        }
+        return $documents;
     }
 
     private static function find(string $documentId): ?DocumentSnapshot
@@ -336,20 +474,31 @@ final class AdminController
         }
         $table = $wpdb->prefix . 'commerce_documents';
         $row = $wpdb->get_row($wpdb->prepare(
-            "SELECT document_id, snapshot, snapshot_cipher FROM {$table} WHERE document_id = %s LIMIT 1",
+            "SELECT document_id, snapshot, snapshot_cipher, content_hash, superseded_by, superseded_at
+             FROM {$table} WHERE document_id = %s LIMIT 1",
             $documentId
         ), ARRAY_A);
-        $data = is_array($row) ? self::decodeRow($row) : null;
-        return is_array($data) ? DocumentSnapshot::fromArray($data) : null;
+        if (!is_array($row)) {
+            return null;
+        }
+        // Single hydration path: encrypted rows are authenticated by AES-GCM and
+        // legacy plaintext rows by content_hash. Neither is trusted unverified.
+        return WpdbDocumentRepository::hydrate($row, self::codec());
     }
 
-    private static function decodeRow(array $row): ?array
+    /** @return array{superseded_by:string,superseded_at:string} */
+    private static function supersession(string $documentId): array
     {
-        if ((string) ($row['snapshot_cipher'] ?? '') !== '') {
-            return self::codec()->decrypt((string) $row['snapshot_cipher'], (string) $row['document_id'])->toArray();
-        }
-        $data = json_decode((string) ($row['snapshot'] ?? ''), true);
-        return is_array($data) ? $data : null;
+        global $wpdb;
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT superseded_by, superseded_at FROM {$wpdb->prefix}commerce_documents
+             WHERE document_id = %s LIMIT 1",
+            $documentId
+        ), ARRAY_A);
+        return [
+            'superseded_by' => (string) ($row['superseded_by'] ?? ''),
+            'superseded_at' => (string) ($row['superseded_at'] ?? ''),
+        ];
     }
 
     private static function events(string $documentId): array
