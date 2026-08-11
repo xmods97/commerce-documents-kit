@@ -130,7 +130,7 @@ final class Plugin
                 new EncryptedSnapshotCodec(new OpenSslAesGcmCipher(ConfigKeyProvider::encryptionKey()))
             ),
             new WpdbNumberGenerator($wpdb, $prefix . 'commerce_document_sequences'),
-            new WpdbEventLogger($wpdb, $prefix . 'commerce_document_events')
+            new WpdbEventLogger($wpdb, $prefix . 'commerce_document_events', ConfigKeyProvider::auditKey())
         );
         $snapshot = $service->execute($request);
 

@@ -23,6 +23,11 @@ final class HtmlRenderer
         }
         $data = $snapshot->toArray();
         $labels = $this->catalog->labels($data['language']);
+        $metadata = (array) ($data['metadata'] ?? []);
+        $paymentNotice = strtolower((string) ($metadata['payment_method'] ?? '')) === 'cod'
+            && (string) ($metadata['payment_confirmed'] ?? 'no') !== 'yes'
+            ? '<p><strong>Nieopłacone — płatność przy odbiorze</strong></p>'
+            : '';
         $rows = '';
         foreach ($data['items'] as $item) {
             $rows .= '<tr><td>' . self::escape($item['description']) . '</td>'
@@ -44,7 +49,7 @@ final class HtmlRenderer
             . '</head><body><header>'
             . '<h1>' . self::escape(strtoupper($data['document_type']) . ' ' . $data['document_number']) . '</h1>'
             . '<button class="print" onclick="window.print()">' . self::escape($labels['print']) . '</button></header>'
-            . '<p>' . self::escape($labels['issued']) . ': ' . self::escape($data['issued_at']) . '</p><div class="parties">'
+            . '<p>' . self::escape($labels['issued']) . ': ' . self::escape($data['issued_at']) . '</p>' . $paymentNotice . '<div class="parties">'
             . '<section><h2>' . self::escape($labels['seller']) . '</h2>'
             . self::party($data['seller']) . '</section>'
             . '<section><h2>' . self::escape($labels['buyer']) . '</h2>'

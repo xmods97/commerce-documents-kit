@@ -38,7 +38,12 @@ final class OrderMapper
             $order->buyer,
             $order->items,
             $generatedAt,
-            $issuedAt
+            $issuedAt,
+            [
+                'payment_method' => $order->paymentMethod,
+                'payment_confirmed' => $order->paidAt !== '' ? 'yes' : 'no',
+                'payment_status' => $order->paidAt !== '' ? 'paid' : 'unpaid',
+            ]
         );
     }
 }

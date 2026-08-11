@@ -56,7 +56,8 @@ final class GenerateDocument
             $request->items,
             $request->createdAt,
             $request->issuedAt,
-            $request->version
+            $request->version,
+            $request->metadata
         );
 
         $result = $this->repository->save($key, $snapshot);

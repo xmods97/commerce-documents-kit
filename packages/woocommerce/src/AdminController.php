@@ -5,8 +5,17 @@ declare(strict_types=1);
 namespace Xmods\CommerceDocuments\WooCommerce;
 
 use Throwable;
+use Xmods\CommerceDocuments\DocumentStatus;
 use Xmods\CommerceDocuments\DocumentSnapshot;
+use Xmods\CommerceDocuments\DocumentType;
+use Xmods\CommerceDocuments\IdempotencyKey;
+use Xmods\CommerceDocuments\WordPress\ConfigKeyProvider;
+use Xmods\CommerceDocuments\WordPress\EncryptedSnapshotCodec;
 use Xmods\CommerceDocuments\WordPress\Installer;
+use Xmods\CommerceDocuments\WordPress\OpenSslAesGcmCipher;
+use Xmods\CommerceDocuments\WordPress\WpdbDocumentRepository;
+use Xmods\CommerceDocuments\WordPress\WpdbEventLogger;
+use Xmods\CommerceDocuments\WordPress\WpdbNumberGenerator;
 use Xmods\CommerceDocuments\Rendering\HtmlRenderer;
 use Xmods\CommerceDocuments\Rendering\TemplateCatalog;
 
@@ -19,6 +28,7 @@ final class AdminController
         add_action('admin_post_commerce_documents_generate', [self::class, 'generate']);
         add_action('admin_post_commerce_documents_view', [self::class, 'view']);
         add_action('admin_post_commerce_documents_migrate', [self::class, 'migrate']);
+        add_action('admin_post_commerce_documents_correct', [self::class, 'correct']);
     }
 
     public static function menu(): void
@@ -76,7 +86,8 @@ final class AdminController
         $invoice = (array) ($settings['invoice_statuses'] ?? []);
         $enabled = get_option('commerce_documents_wc_shadow_enabled', false) === true;
         $statuses = function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [];
-        $documents = self::documents();
+        $search = isset($_GET['cdk_search']) ? sanitize_text_field(wp_unslash($_GET['cdk_search'])) : '';
+        $documents = self::documents($search);
 
         echo '<div class="wrap"><h1>Commerce Documents</h1>';
         self::notice();
@@ -124,6 +135,9 @@ final class AdminController
         echo '<label>Order ID <input type="number" min="1" required name="order_id"></label> ';
         submit_button('Generate test document', 'secondary', 'submit', false);
         echo '</form><h2>Generated documents</h2>';
+        echo '<form method="get"><input type="hidden" name="page" value="commerce-documents">'
+            . '<input type="search" name="cdk_search" value="' . esc_attr($search) . '" placeholder="Number, order, type or document ID"> '
+            . '<button class="button">Search</button></form>';
         $migration = Installer::preflight();
         echo '<hr><h2>Database migration</h2><p>Installed schema: ' . esc_html((string) $migration['installed_version'])
             . ' / target: ' . esc_html((string) $migration['target_version']) . '</p>';
@@ -140,7 +154,7 @@ final class AdminController
         if ($documents === []) {
             echo '<p>No documents have been generated yet.</p>';
         } else {
-            echo '<table class="widefat striped"><thead><tr><th>Number</th><th>Type</th><th>Order</th><th>Created</th><th></th></tr></thead><tbody>';
+            echo '<table class="widefat striped"><thead><tr><th>Number</th><th>Type</th><th>Order</th><th>Created</th><th>Audit</th><th>Actions</th></tr></thead><tbody>';
             foreach ($documents as $document) {
                 $url = wp_nonce_url(
                     admin_url('admin-post.php?action=commerce_documents_view&document_id=' . rawurlencode($document['document_id'])),
@@ -148,8 +162,14 @@ final class AdminController
                 );
                 echo '<tr><td>' . esc_html($document['document_number']) . '</td><td>'
                     . esc_html($document['document_type']) . '</td><td>#' . esc_html($document['source_id'])
-                    . '</td><td>' . esc_html($document['created_at']) . '</td><td><a class="button" target="_blank" href="'
-                    . esc_url($url) . '">View / print</a></td></tr>';
+                    . '</td><td>' . esc_html($document['created_at']) . '</td><td>' . esc_html((string) $document['audit_count']) . '</td><td><a class="button" target="_blank" href="'
+                    . esc_url($url) . '">View / print</a>'
+                    . '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin-top:6px">'
+                    . '<input type="hidden" name="action" value="commerce_documents_correct">'
+                    . '<input type="hidden" name="document_id" value="' . esc_attr($document['document_id']) . '">'
+                    . '<input type="text" name="correction_note" required maxlength="191" placeholder="Correction note">'
+                    . wp_nonce_field('commerce_documents_correct_' . $document['document_id'], '_wpnonce', true, false)
+                    . '<button class="button">Create correction</button></form></td></tr>';
             }
             echo '</tbody></table>';
         }
@@ -186,7 +206,13 @@ final class AdminController
         nocache_headers();
         header('Content-Type: text/html; charset=UTF-8');
         $exponent = function_exists('wc_get_price_decimals') ? (int) wc_get_price_decimals() : null;
-        echo (new HtmlRenderer(new TemplateCatalog()))->render($snapshot, $exponent);
+        $html = (new HtmlRenderer(new TemplateCatalog()))->render($snapshot, $exponent);
+        $audit = '<section style="max-width:900px;margin:24px auto;padding:0 20px"><h2>Audit trail</h2><ul>';
+        foreach (self::events($documentId) as $event) {
+            $audit .= '<li>' . esc_html($event['created_at'] . ' — ' . $event['event_name']) . '</li>';
+        }
+        $audit .= '</ul></section>';
+        echo str_replace('</body>', $audit . '</body>', $html);
         exit;
     }
 
@@ -196,6 +222,55 @@ final class AdminController
         try {
             Installer::migrateToCurrentVersion(isset($_POST['backup_confirmed']) && (string) $_POST['backup_confirmed'] === '1');
             self::redirect('migrated');
+        } catch (Throwable $error) {
+            self::redirect('failed', $error->getMessage());
+        }
+    }
+
+    public static function correct(): void
+    {
+        $documentId = isset($_POST['document_id']) ? sanitize_text_field(wp_unslash($_POST['document_id'])) : '';
+        self::authorize('commerce_documents_correct_' . $documentId);
+        $note = isset($_POST['correction_note']) ? sanitize_text_field(wp_unslash($_POST['correction_note'])) : '';
+        if ($documentId === '' || $note === '') {
+            self::redirect('failed', 'Document and correction note are required.');
+        }
+        try {
+            global $wpdb;
+            $original = self::find($documentId);
+            if ($original === null) {
+                throw new \RuntimeException('Document not found.');
+            }
+            $now = gmdate(DATE_ATOM);
+            $data = $original->toArray();
+            $sourceId = $documentId . ':' . gmdate('YmdHis') . ':' . bin2hex(random_bytes(8));
+            $type = DocumentType::fromString(DocumentType::CORRECTION);
+            $key = IdempotencyKey::forSource('commerce_document_correction', $sourceId, $type);
+            $data['document_id'] = 'doc_' . substr($key->value(), 0, 24);
+            $data['document_number'] = (new WpdbNumberGenerator($wpdb, $wpdb->prefix . 'commerce_document_sequences'))->next($type, $now);
+            $data['document_type'] = DocumentType::CORRECTION;
+            $data['status'] = DocumentStatus::ISSUED;
+            $data['source_type'] = 'commerce_document_correction';
+            $data['source_id'] = $sourceId;
+            $data['created_at'] = $now;
+            $data['issued_at'] = $now;
+            $data['version'] = ((int) ($data['version'] ?? 1)) + 1;
+            $data['metadata']['correction_of'] = $documentId;
+            $data['metadata']['correction_note'] = $note;
+            $snapshot = DocumentSnapshot::fromArray($data);
+            (new WpdbDocumentRepository($wpdb, $wpdb->prefix . 'commerce_documents', self::codec()))->save($key, $snapshot);
+            $wpdb->insert($wpdb->prefix . 'commerce_document_links', [
+                'document_id' => $snapshot->toArray()['document_id'],
+                'parent_document_id' => $documentId,
+                'relationship' => 'correction',
+                'created_at' => gmdate('Y-m-d H:i:s'),
+            ], ['%s', '%s', '%s', '%s']);
+            (new WpdbEventLogger($wpdb, $wpdb->prefix . 'commerce_document_events', ConfigKeyProvider::auditKey()))->record(
+                'document.corrected',
+                $snapshot->toArray()['document_id'],
+                ['parent_document_id' => $documentId]
+            );
+            self::redirect('corrected');
         } catch (Throwable $error) {
             self::redirect('failed', $error->getMessage());
         }
@@ -219,7 +294,7 @@ final class AdminController
         exit;
     }
 
-    private static function documents(): array
+    private static function documents(string $search = ''): array
     {
         global $wpdb;
         if (!is_object($wpdb)) {
@@ -227,13 +302,22 @@ final class AdminController
         }
         $table = $wpdb->prefix . 'commerce_documents';
         $rows = $wpdb->get_results(
-            "SELECT document_id, document_type, source_id, snapshot, created_at FROM {$table} ORDER BY id DESC LIMIT 50",
+            "SELECT document_id, document_type, source_id, snapshot, snapshot_cipher, created_at FROM {$table} ORDER BY id DESC LIMIT 50",
             ARRAY_A
         );
         foreach ((array) $rows as &$row) {
-            $data = json_decode((string) $row['snapshot'], true);
+            $data = self::decodeRow($row);
             $row['document_number'] = is_array($data) ? (string) ($data['document_number'] ?? '') : '';
+            $row['audit_count'] = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}commerce_document_events WHERE document_id = %s",
+                $row['document_id']
+            ));
+            if ($search !== '' && stripos(implode(' ', [(string) $row['document_id'], (string) $row['document_number'], (string) $row['document_type'], (string) $row['source_id']]), $search) === false) {
+                unset($row);
+                continue;
+            }
             unset($row['snapshot']);
+            unset($row['snapshot_cipher']);
         }
         return array_values((array) $rows);
     }
@@ -245,12 +329,36 @@ final class AdminController
             return null;
         }
         $table = $wpdb->prefix . 'commerce_documents';
-        $json = $wpdb->get_var($wpdb->prepare(
-            "SELECT snapshot FROM {$table} WHERE document_id = %s LIMIT 1",
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT document_id, snapshot, snapshot_cipher FROM {$table} WHERE document_id = %s LIMIT 1",
             $documentId
-        ));
-        $data = is_string($json) ? json_decode($json, true) : null;
+        ), ARRAY_A);
+        $data = is_array($row) ? self::decodeRow($row) : null;
         return is_array($data) ? DocumentSnapshot::fromArray($data) : null;
+    }
+
+    private static function decodeRow(array $row): ?array
+    {
+        if ((string) ($row['snapshot_cipher'] ?? '') !== '') {
+            return self::codec()->decrypt((string) $row['snapshot_cipher'], (string) $row['document_id'])->toArray();
+        }
+        $data = json_decode((string) ($row['snapshot'] ?? ''), true);
+        return is_array($data) ? $data : null;
+    }
+
+    private static function events(string $documentId): array
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'commerce_document_events';
+        return (array) $wpdb->get_results($wpdb->prepare(
+            "SELECT event_name, created_at FROM {$table} WHERE document_id = %s ORDER BY id ASC",
+            $documentId
+        ), ARRAY_A);
+    }
+
+    private static function codec(): EncryptedSnapshotCodec
+    {
+        return new EncryptedSnapshotCodec(new OpenSslAesGcmCipher(ConfigKeyProvider::encryptionKey()));
     }
 
     private static function field(
