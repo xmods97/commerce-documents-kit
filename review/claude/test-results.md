@@ -285,6 +285,53 @@ This is the part the previous pass could not do at all, and it is now partly pos
 - Windows will not create a filename containing `"`, `<` or `>`, so the hostile-filename fixture uses `logo';DROP TABLE wp_posts;--script.png`. The property under test — that no filename reaches the document — is unaffected.
 - The sandbox is created under the system temp directory and removed at the end of the run, deliberately away from the OneDrive-backed working copy, whose ACL behaviour caused a spurious failure in an earlier pass.
 
-## 8. Environment note (not a product finding)
+## 8. Admin preview wiring — verification run
+
+### PHP lint
+
+```
+php -l over every *.php outside vendor/
+checked=101  failed=0
+```
+
+### Focused runtime checks
+
+`review/claude/verify-admin-preview.php` — **34 checks, 34 pass, 0 fail, exit 0**. Full output: `evidence/verify-admin-preview-output.txt`.
+
+This harness is different from the other two in one way that matters: the WordPress functions `get_theme_mod`, `get_post_mime_type`, `get_attached_file`, `wp_get_attachment_metadata` and `wp_upload_dir` are defined over a fixture, and the provider is then constructed **with no arguments** — exactly as `AdminController::pdfRenderer()` constructs it. It therefore proves the default wiring resolves a real logo, rather than proving a fake does.
+
+| Group | Checks | Result |
+|---|---|---|
+| P1 — zero-argument wiring | 5 | pass (attachment id, MIME, a local path with no `://`, uploads base directory, and a no-argument provider that resolves the logo) |
+| P2 — PNG Custom Logo | 6 | pass (one image XObject, drawn on page 1, transparency as a soft mask, structurally valid, text intact, nothing remote or active) |
+| P3 — JPEG Custom Logo | 3 | pass (embedded as `/DCTDecode`, valid, no soft mask) |
+| P4 — whole logo, never a crop | 3 | pass (the proportional 600×150 variant is chosen, the 480×480 square crop is not, and the document embeds the proportional one) |
+| P5 — no logo and unusable logo | 8 | pass (no Custom Logo → no `/XObject` at all, valid, same text; an SVG Custom Logo produces a document **byte-identical to the no-logo one**; an SVG renamed to `.png` is refused on content; a missing file still produces a document) |
+| P6 — the preview action | 9 | pass (registered on `admin_post`, capability checked first, nonce bound to the document, inline PDF headers with `nosniff`, buffers cleared, failures become `wp_die`, no transport/queue/write in the controller, nonce-signed link in the list, filename derived safely) |
+
+### The invariant that changed
+
+`verify-pdf-engine.php` E11 used to assert "no plugin code path constructs a PDF renderer or a mailer". That is no longer true, and pretending otherwise would have been the wrong way to keep a green check. It is now six assertions instead of one:
+
+- a PDF renderer is constructed in **exactly one place**, `AdminController.php`;
+- it is constructed only inside the `pdfRenderer()` factory;
+- **no** plugin code constructs a mailer, and none constructs `DeliverDocument`;
+- the preview is registered on `admin_post` only and `Plugin.php` never mentions it;
+- the preview requires the capability and a per-document nonce;
+- the controller contains no transport call.
+
+`PluginIsolationTest` gained the same two assertions in PHPUnit form.
+
+### Visual check
+
+`evidence/pdf-preview-logo-extracted.png` is the image pulled back out of the PDF the **wired** path produced. It shows the complete lockup — mark plus wordmark, 1200×300, transparency intact — not the 480×480 square crop, which would have been the mark alone. That is precisely the distinction the crop fix exists to make, confirmed by looking.
+
+Still not looked at: the page. No PDF rasteriser exists offline. Opening `evidence/pdf-preview-logo-png.pdf` once remains the outstanding check.
+
+### PHPUnit — still not run
+
+`vendor/` remains absent. `PluginIsolationTest` gained two methods; they are written and lint-clean but **not executed**. Their assertions are source-level and are duplicated in `verify-admin-preview.php` P6 and `verify-pdf-engine.php` E11, both of which do execute.
+
+## 9. Environment note (not a product finding)
 
 On the second harness run, `SandboxMailer::__construct()` threw `Sandbox mail directory is not writable` for a directory it had itself created on the previous run. This is a Windows/OneDrive ACL artifact of the review sandbox, not a defect in the mailer; the harness was changed to use a unique directory per run and the check then passed. I mention it only so the log is not misread.

@@ -87,8 +87,15 @@
 === E10 — glyph outlines are the original ones ===
   PASS  every subset outline is identical to the source font outline — 339 glyphs compared, including composites and their components
 
-=== E11 — delivery posture unchanged ===
-  PASS  no plugin code path constructs a PDF renderer or a mailer — nothing wired
+=== E11 — delivery posture: the renderer is wired, nothing else is ===
+  PASS  a PDF renderer is constructed in exactly one place — AdminController.php -> EmbeddedFontPdfRenderer
+  PASS  no plugin code path constructs a mailer — nothing wired
+  PASS  no plugin code path constructs the delivery use case — nothing wired
+  PASS  the renderer is constructed only inside the preview factory
+  PASS  the preview is registered on admin_post only, never on an order hook
+  PASS  the preview requires the capability and a nonce bound to the document
+  PASS  the preview sends the document to the browser and nowhere else — no transport and no write in the controller
+  PASS  the logo provider is the WordPress one, constructed without arguments
 
 === E12 — M10 follow-up: legacy types readable, not issuable ===
   PASS  every legacy type is still constructible, so historical rows stay readable — quote, proforma, invoice, receipt, credit_note, order_confirmation, correction
@@ -96,4 +103,4 @@
   PASS  issuing a legacy fiscal type is refused — invoice, proforma, receipt, credit_note, quote
   PASS  the refusal sits in the application service, not only in the order policy
 
-checks=73 pass=73 fail=0
+checks=80 pass=80 fail=0

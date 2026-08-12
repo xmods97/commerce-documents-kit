@@ -298,4 +298,8 @@ Original blocking set: C1, H1, H4, H2, H3, H5, H6, M4, M5, M6, M8.
 | C1, H1, H2, H3, H4, H5, H6, M4, M5, M6, M8 | Fixed and verified |
 | Production PDF engine | Selected, built, reviewed; open item is a single visual confirmation |
 
-Nothing in the plugin wires a Mailer or a PdfRenderer — asserted automatically — so there is still no code path that can send anything. Delivery is now gated only on the separate end-to-end sandbox stage and its approval, not on the engine.
+**The renderer is now wired; nothing that sends is.** `AdminController::previewPdf()` renders one document to the administrator's browser behind `current_user_can('manage_woocommerce')` and a nonce bound to that document, discards any buffered output, and responds with `Content-Type: application/pdf`, `Content-Disposition: inline` and `X-Content-Type-Options: nosniff`. Nothing is stored and nothing is queued.
+
+No mailer and no `DeliverDocument` is constructed anywhere in the plugin, and the controller contains no `wp_mail`, socket, HTTP client, scheduler or `file_put_contents`. The preview is registered on `admin_post_*` only, so no order hook reaches it — `Plugin.php` does not mention it. The earlier invariant "nothing is wired" is therefore narrowed rather than dropped: exactly one renderer construction, inside the preview factory, and no mailer at all. Both halves are asserted automatically (`verify-pdf-engine.php` E11, `verify-admin-preview.php` P6). Full detail in `admin-preview-wiring.md`.
+
+Email delivery remains gated on the separate end-to-end sandbox stage and its approval.

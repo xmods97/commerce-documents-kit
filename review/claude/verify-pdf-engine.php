@@ -868,17 +868,57 @@ if ($sourceFile === '' || !is_file($sourceFile)) {
             : implode('; ', array_slice($problems, 0, 5)));
 }
 
-section('E11 — delivery posture unchanged');
+section('E11 — delivery posture: the renderer is wired, nothing else is');
 
-$wiring = [];
+// The renderer is now reachable from the admin preview. That is a deliberate
+// change and it narrows, rather than removes, the invariant: exactly one place
+// may construct a renderer, no place may construct a mailer, and no order hook
+// may reach either.
+$rendererWiring = [];
+$mailerWiring = [];
+$deliveryWiring = [];
 foreach (glob($root . '/packages/*/src/*.php') as $path) {
     $source = (string) file_get_contents($path);
-    if (preg_match('/new\s+(EmbeddedFontPdfRenderer|BasicPdfRenderer|SandboxMailer)\s*\(/', $source, $m)) {
-        $wiring[] = basename($path) . ' -> ' . $m[1];
+    if (preg_match('/new\s+(EmbeddedFontPdfRenderer|BasicPdfRenderer)\s*\(/', $source, $match)) {
+        $rendererWiring[] = basename($path) . ' -> ' . $match[1];
+    }
+    if (preg_match('/new\s+(SandboxMailer)\s*\(/', $source, $match)) {
+        $mailerWiring[] = basename($path) . ' -> ' . $match[1];
+    }
+    if (preg_match('/new\s+DeliverDocument\s*\(/', $source)) {
+        $deliveryWiring[] = basename($path);
     }
 }
-check('no plugin code path constructs a PDF renderer or a mailer', $wiring === [],
-    $wiring === [] ? 'nothing wired' : implode(', ', $wiring));
+
+check('a PDF renderer is constructed in exactly one place',
+    $rendererWiring === ['AdminController.php -> EmbeddedFontPdfRenderer'],
+    $rendererWiring === [] ? 'nothing wired' : implode(', ', $rendererWiring));
+check('no plugin code path constructs a mailer', $mailerWiring === [],
+    $mailerWiring === [] ? 'nothing wired' : implode(', ', $mailerWiring));
+check('no plugin code path constructs the delivery use case', $deliveryWiring === [],
+    $deliveryWiring === [] ? 'nothing wired' : implode(', ', $deliveryWiring));
+
+$controller = (string) file_get_contents($root . '/packages/woocommerce/src/AdminController.php');
+$plugin = (string) file_get_contents($root . '/packages/woocommerce/src/Plugin.php');
+
+check('the renderer is constructed only inside the preview factory',
+    substr_count($controller, 'new EmbeddedFontPdfRenderer(') === 1
+    && (bool) preg_match('/private static function pdfRenderer\(\).*?new EmbeddedFontPdfRenderer\(/s', $controller));
+check('the preview is registered on admin_post only, never on an order hook',
+    strpos($controller, "add_action('admin_post_commerce_documents_preview_pdf'") !== false
+    && preg_match('/add_action\(\s*[\'"]woocommerce_[^\'"]*[\'"]\s*,\s*\[self::class, [\'"]previewPdf/', $controller) === 0
+    && strpos($plugin, 'previewPdf') === false);
+check('the preview requires the capability and a nonce bound to the document',
+    (bool) preg_match(
+        '/function previewPdf.*?current_user_can\(\'manage_woocommerce\'\).*?'
+        . 'check_admin_referer\(\'commerce_documents_preview_pdf_\' \. \$documentId\)/s',
+        $controller
+    ));
+check('the preview sends the document to the browser and nowhere else',
+    preg_match('/\b(wp_mail|mail|fsockopen|curl_\w+|wp_remote_\w+|file_put_contents)\s*\(/', $controller) === 0,
+    'no transport and no write in the controller');
+check('the logo provider is the WordPress one, constructed without arguments',
+    strpos($controller, 'new WordPressLogoProvider()') !== false);
 
 section('E12 — M10 follow-up: legacy types readable, not issuable');
 

@@ -43,4 +43,59 @@ final class PluginIsolationTest extends TestCase
         self::assertStringNotContainsString('wp_mail(', $controller);
         self::assertStringNotContainsString('FiscalizationGateway', $controller);
     }
+
+    /**
+     * The PDF renderer is now wired, to one admin preview and nowhere else. This
+     * pins that shape: the invariant is no longer "nothing is wired" but "exactly
+     * this is wired", which is the version worth defending.
+     */
+    public function testThePdfRendererIsWiredOnlyToTheAdminPreview(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $controller = (string) file_get_contents($root . '/packages/woocommerce/src/AdminController.php');
+        $plugin = (string) file_get_contents($root . '/packages/woocommerce/src/Plugin.php');
+
+        // Exactly one construction, inside the preview factory.
+        self::assertSame(1, substr_count($controller, 'new EmbeddedFontPdfRenderer('));
+        self::assertMatchesRegularExpression(
+            '/private static function pdfRenderer\(\).*?new EmbeddedFontPdfRenderer\(/s',
+            $controller
+        );
+        self::assertStringContainsString('new WordPressLogoProvider()', $controller);
+
+        // Registered on admin_post, unreachable from any order hook.
+        self::assertStringContainsString(
+            "add_action('admin_post_commerce_documents_preview_pdf', [self::class, 'previewPdf'])",
+            $controller
+        );
+        self::assertStringNotContainsString('previewPdf', $plugin);
+
+        // Capability, then a nonce bound to the requested document.
+        self::assertMatchesRegularExpression(
+            "/function previewPdf\(\): void\s*\{\s*if \(!current_user_can\('manage_woocommerce'\)\)/",
+            $controller
+        );
+        self::assertStringContainsString(
+            "check_admin_referer('commerce_documents_preview_pdf_' . \$documentId)",
+            $controller
+        );
+
+        // A preview, not a delivery: no transport, no queue, no write.
+        self::assertDoesNotMatchRegularExpression(
+            '/\b(wp_mail|fsockopen|curl_\w+|wp_remote_\w+|file_put_contents|wp_schedule_)\w*\s*\(/',
+            $controller
+        );
+    }
+
+    public function testNoPluginCodeConstructsAMailerOrTheDeliveryUseCase(): void
+    {
+        foreach (glob(dirname(__DIR__, 2) . '/packages/*/src/*.php') ?: [] as $path) {
+            $source = (string) file_get_contents($path);
+            self::assertDoesNotMatchRegularExpression(
+                '/new\s+(SandboxMailer|DeliverDocument)\s*\(/',
+                $source,
+                basename($path) . ' must not wire delivery'
+            );
+        }
+    }
 }

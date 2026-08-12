@@ -17,8 +17,10 @@ use Xmods\CommerceDocuments\WordPress\OpenSslAesGcmCipher;
 use Xmods\CommerceDocuments\WordPress\WpdbDocumentRepository;
 use Xmods\CommerceDocuments\WordPress\WpdbEventLogger;
 use Xmods\CommerceDocuments\WordPress\WpdbNumberGenerator;
+use Xmods\CommerceDocuments\Rendering\EmbeddedFontPdfRenderer;
 use Xmods\CommerceDocuments\Rendering\HtmlRenderer;
 use Xmods\CommerceDocuments\Rendering\TemplateCatalog;
+use Xmods\CommerceDocuments\WordPress\WordPressLogoProvider;
 
 final class AdminController
 {
@@ -28,6 +30,9 @@ final class AdminController
         add_action('admin_init', [self::class, 'registerSettings']);
         add_action('admin_post_commerce_documents_generate', [self::class, 'generate']);
         add_action('admin_post_commerce_documents_view', [self::class, 'view']);
+        // Preview only: an administrator asking to see one document. It is not
+        // reachable from any order hook, and there is no delivery path behind it.
+        add_action('admin_post_commerce_documents_preview_pdf', [self::class, 'previewPdf']);
         add_action('admin_post_commerce_documents_migrate', [self::class, 'migrate']);
         add_action('admin_post_commerce_documents_correct', [self::class, 'correct']);
     }
@@ -188,6 +193,13 @@ final class AdminController
                     admin_url('admin-post.php?action=commerce_documents_view&document_id=' . rawurlencode($document['document_id'])),
                     'commerce_documents_view_' . $document['document_id']
                 );
+                $pdfUrl = wp_nonce_url(
+                    admin_url(
+                        'admin-post.php?action=commerce_documents_preview_pdf&document_id='
+                        . rawurlencode($document['document_id'])
+                    ),
+                    'commerce_documents_preview_pdf_' . $document['document_id']
+                );
                 $supersededBy = (string) ($document['superseded_by'] ?? '');
                 $state = $supersededBy !== ''
                     ? 'Replaced by ' . $supersededBy
@@ -198,6 +210,9 @@ final class AdminController
                     . '</td><td>' . esc_html($state)
                     . '</td><td>' . esc_html((string) $document['audit_count']) . '</td><td><a class="button" target="_blank" href="'
                     . esc_url($url) . '">View / print</a>';
+                if ($document['readable']) {
+                    echo ' <a class="button" target="_blank" href="' . esc_url($pdfUrl) . '">Preview PDF</a>';
+                }
                 if ($supersededBy === '' && $document['readable']) {
                     // The token is minted once per rendered form, so a resubmitted or
                     // double-clicked form resolves to the same idempotency key.
@@ -277,6 +292,81 @@ final class AdminController
         $audit .= '</ul></section>';
         echo str_replace('<body>', '<body>' . $banner, str_replace('</body>', $audit . '</body>', $html));
         exit;
+    }
+
+    /**
+     * Renders one document as a PDF and returns it to the administrator's browser.
+     *
+     * This is the only place in the plugin that constructs a PDF renderer, and it
+     * is a preview: an administrator clicked a nonce-signed link for a specific
+     * document. Nothing is stored, nothing is queued and nothing is sent — there
+     * is no Mailer here and no order hook reaches this method.
+     *
+     * The logo comes from WordPressLogoProvider, which reads the site's Custom
+     * Logo from the local uploads directory. It never fetches anything, and if
+     * the logo is missing, unsafe or in a format the renderer refuses, it returns
+     * nothing and the document is produced without a logo.
+     */
+    public static function previewPdf(): void
+    {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die('Forbidden', '', ['response' => 403]);
+        }
+        $documentId = isset($_GET['document_id']) ? sanitize_text_field(wp_unslash($_GET['document_id'])) : '';
+        check_admin_referer('commerce_documents_preview_pdf_' . $documentId);
+
+        $snapshot = self::find($documentId);
+        if ($snapshot === null) {
+            wp_die('Document not found.', '', ['response' => 404]);
+        }
+
+        try {
+            $pdf = self::pdfRenderer()->render($snapshot);
+        } catch (Throwable $error) {
+            wp_die(
+                esc_html('The document could not be rendered: ' . $error->getMessage()),
+                '',
+                ['response' => 500]
+            );
+        }
+
+        // Anything already buffered would corrupt the binary response.
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        nocache_headers();
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="' . self::pdfFilename($snapshot) . '"');
+        header('Content-Length: ' . strlen($pdf));
+        header('X-Content-Type-Options: nosniff');
+        echo $pdf;
+        exit;
+    }
+
+    /**
+     * The one construction of the production renderer.
+     *
+     * The store's own price precision is used rather than a hard-coded 2 so the
+     * amounts on the PDF match the amounts everywhere else in the shop.
+     */
+    private static function pdfRenderer(): EmbeddedFontPdfRenderer
+    {
+        return new EmbeddedFontPdfRenderer(
+            function_exists('wc_get_price_decimals') ? (int) wc_get_price_decimals() : 2,
+            null,
+            null,
+            new WordPressLogoProvider()
+        );
+    }
+
+    /** A filename safe for a Content-Disposition header, derived from the document number. */
+    private static function pdfFilename(DocumentSnapshot $snapshot): string
+    {
+        $number = (string) ($snapshot->toArray()['document_number'] ?? 'document');
+        $name = preg_replace('/[^A-Za-z0-9._-]+/', '-', $number);
+        $name = trim((string) $name, '-');
+        return ($name === '' ? 'document' : substr($name, 0, 100)) . '.pdf';
     }
 
     public static function migrate(): void

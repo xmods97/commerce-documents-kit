@@ -2,7 +2,7 @@
 
 Branch: `agent/geward-document-module-stage0`
 Baseline for the fixes: `cecbf84`
-Companion documents: `security-findings.md` (per-finding status), `test-results.md` (evidence)
+Companion documents: `security-findings.md` (per-finding status), `test-results.md` (evidence), `pdf-engine-decision.md` (engine and logo), `admin-preview-wiring.md` (what is connected, and what is not)
 
 Constraints observed: no change to the main Geward repository, no branch or worktree change, no WordPress or database migration, no Laragon install, no deploy/push/merge/release, no real email, no external PDF or email provider, no Fakturownia or KSeF, no secrets in Git or the database.
 
@@ -17,7 +17,7 @@ Constraints observed: no change to the main Geward repository, no branch or work
 | Medium | 10 | 9 | 1 (M9) | – |
 | Low | 6 | 4 | – | 2 (L2, L6) |
 
-PHP lint: 100 files, 0 errors. Focused runtime checks: 59/59 (fix pass), 73/73 (engine pass) and 69/69 (logo pass), all exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
+PHP lint: 101 files, 0 errors. Focused runtime checks: 59/59 (fix pass), 73/73 (engine pass), 69/69 (logo pass) and 34/34 (preview wiring), all exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
 
 **The blocker recorded in the previous pass — the production PDF engine — is now closed.** The decision, the alternatives and the security review are in `pdf-engine-decision.md`; the summary is at the end of this document.
 
@@ -137,9 +137,11 @@ Two things are worth knowing about the implementation. **JPEG is passed through 
 
 ## Current delivery posture
 
-`SandboxMailer`, `BasicPdfRenderer`, `EmbeddedFontPdfRenderer`, `WordPressLogoProvider` and `DeliverDocument` are still referenced only from tests and from the verification harnesses. No plugin code path constructs a Mailer or a PdfRenderer — that is asserted automatically rather than checked by hand — and no transport call exists in any of them. **Nothing can send anything today.** With the engine decided and the logo built, the remaining gate is the end-to-end sandbox stage and its separate approval; `SandboxMailer` was deliberately left unwired.
+The renderer is now wired — to one place, and that place sends nothing. `AdminController::previewPdf()` renders a single document to the administrator's browser behind a capability check and a per-document nonce. `WordPressLogoProvider` is constructed there with no arguments, so the logo is the site's current Custom Logo, read from a local file in uploads, with nothing to configure and nothing fetched. Details in `admin-preview-wiring.md`.
 
-The logo provider is unwired for the same reason: nothing constructs a renderer yet, so there is nowhere to attach it. When the renderer is wired in the sandbox stage, `new EmbeddedFontPdfRenderer(2, null, null, new WordPressLogoProvider())` is the entire change, and the logo is then automatic with no configuration — the provider reads the site's Custom Logo by itself.
+**`SandboxMailer` and `DeliverDocument` remain unwired, and no transport call exists anywhere in the plugin.** Nothing can send anything today. The preview hangs off `admin_post_*` only — no order hook, no cron, no queue reaches it — and nothing is written to disk or to the database.
+
+The invariant the earlier passes defended was "nothing is wired". It has not been dropped, it has been narrowed to "exactly one renderer construction, in the preview, and no mailer at all" — and that is what the automated checks now assert. Email delivery remains gated on the end-to-end sandbox stage and its separate approval.
 
 ---
 
