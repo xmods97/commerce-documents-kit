@@ -8,9 +8,9 @@ require $root . '/tools/runtime-autoload.php';
 if (!class_exists('WC_Tax')) {
     class WC_Tax
     {
-        public static function get_rates(string $taxRateId): array
+        public static function get_rate_percent(int $taxRateId): string
         {
-            return [['rate' => '23.0000']];
+            return '23.0000%';
         }
     }
 }

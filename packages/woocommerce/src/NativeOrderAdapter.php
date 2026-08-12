@@ -205,13 +205,12 @@ final class NativeOrderAdapter
             $taxes = (array) $item->get_taxes();
             $totals = (array) ($taxes['total'] ?? []);
             $rateIds = array_keys($totals);
-            if (count($rateIds) === 1) {
-                $rates = \WC_Tax::get_rates((string) $rateIds[0]);
-                if (is_array($rates) && count($rates) === 1) {
-                    $rate = self::taxRateFromDecimal((string) ($rates[0]['rate'] ?? ''));
-                    if ($rate instanceof TaxRate) {
-                        return $rate;
-                    }
+            if (count($rateIds) === 1 && method_exists('WC_Tax', 'get_rate_percent')) {
+                $rate = self::taxRateFromDecimal(
+                    (string) \WC_Tax::get_rate_percent((int) $rateIds[0])
+                );
+                if ($rate instanceof TaxRate) {
+                    return $rate;
                 }
             }
         }
@@ -223,7 +222,7 @@ final class NativeOrderAdapter
 
     private static function taxRateFromDecimal(string $value): ?TaxRate
     {
-        $value = trim(str_replace(',', '.', $value));
+        $value = trim(str_replace(',', '.', rtrim($value, "% \t\n\r\0\x0B")));
         if (preg_match('/^\d{1,3}(?:\.\d{1,6})?$/D', $value) !== 1) {
             return null;
         }
