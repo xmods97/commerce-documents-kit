@@ -5,6 +5,16 @@ declare(strict_types=1);
 $root = dirname(__DIR__, 2);
 require $root . '/tools/runtime-autoload.php';
 
+if (!class_exists('WC_Tax')) {
+    class WC_Tax
+    {
+        public static function get_rates(string $taxRateId): array
+        {
+            return [['rate' => '23.0000']];
+        }
+    }
+}
+
 use Xmods\CommerceDocuments\Address;
 use Xmods\CommerceDocuments\Currency;
 use Xmods\CommerceDocuments\DocumentItem;
@@ -88,6 +98,7 @@ $native = (new NativeOrderAdapter($seller, Language::fromTag('pl-PL'), 2))->map(
         public function get_quantity(): int { return 1; }
         public function get_total(): string { return '100.00'; }
         public function get_total_tax(): string { return '23.00'; }
+        public function get_taxes(): array { return ['total' => [1 => '23.00']]; }
         public function get_meta(string $key, bool $single): string { return 'szt.'; }
     }] : []; }
     public function get_shipping_total(): string { return '0'; }
@@ -105,6 +116,38 @@ $native = (new NativeOrderAdapter($seller, Language::fromTag('pl-PL'), 2))->map(
     public function get_billing_country(): string { return 'PL'; }
 });
 $check('NativeOrderAdapter maps WooCommerce-shaped order', $native->currency->code() === 'PLN' && $native->paymentMethod === 'cod');
+$check('NativeOrderAdapter preserves the authoritative WooCommerce rate', $native->items[0]->taxRate()->partsPerMillion() === 230000);
+
+$roundedNative = (new NativeOrderAdapter($seller, Language::fromTag('pl-PL'), 2))->map(new class {
+    public function get_id(): int { return 46; }
+    public function get_status(): string { return 'processing'; }
+    public function get_currency(): string { return 'PLN'; }
+    public function get_date_created(): object { return new class { public function date(string $format): string { return '2026-08-12T10:00:00+00:00'; } }; }
+    public function get_date_paid(): object { return new class { public function date(string $format): string { return '2026-08-12T10:05:00+00:00'; } }; }
+    public function get_payment_method(): string { return 'bacs'; }
+    public function get_items(string $type): array { return $type === 'line_item' ? [new class {
+        public function get_name(): string { return 'Rounded line'; }
+        public function get_quantity(): int { return 1; }
+        public function get_total(): string { return '25.58'; }
+        public function get_total_tax(): string { return '5.88'; }
+        public function get_taxes(): array { return ['total' => [1 => '5.88']]; }
+        public function get_meta(string $key, bool $single): string { return 'szt.'; }
+    }] : []; }
+    public function get_shipping_total(): string { return '0'; }
+    public function get_shipping_tax(): string { return '0'; }
+    public function get_meta(string $key, bool $single): string { return ''; }
+    public function get_billing_company(): string { return 'Buyer'; }
+    public function get_billing_first_name(): string { return ''; }
+    public function get_billing_last_name(): string { return ''; }
+    public function get_billing_email(): string { return 'buyer@example.invalid'; }
+    public function get_billing_address_1(): string { return 'Testowa 1'; }
+    public function get_billing_address_2(): string { return ''; }
+    public function get_billing_postcode(): string { return '00-001'; }
+    public function get_billing_city(): string { return 'Warszawa'; }
+    public function get_billing_state(): string { return ''; }
+    public function get_billing_country(): string { return 'PL'; }
+});
+$check('rounded WooCommerce line still snapshots as 23%', $roundedNative->items[0]->taxRate()->partsPerMillion() === 230000, (string) $roundedNative->items[0]->taxRate()->partsPerMillion());
 
 $pdf = (new BasicPdfRenderer(2))->render($snapshot);
 $check('PDF contains the unpaid COD marker', strpos($pdf, 'NIEOP') !== false);

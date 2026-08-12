@@ -116,7 +116,7 @@ final class NativeOrderAdapter
             $quantity,
             $unit !== '' ? $unit : 'unit',
             $unitNet,
-            $this->effectiveRate($lineNet, $lineTax),
+            $this->taxRateForItem($item, $lineNet, $lineTax),
             $lineNet,
             $lineTax
         );
@@ -191,6 +191,51 @@ final class NativeOrderAdapter
         }
         $ppm = intdiv($taxUnits * 1000000 + intdiv($netUnits, 2), $netUnits);
         return TaxRate::fromPartsPerMillion($ppm);
+    }
+
+    /**
+     * WooCommerce stores the authoritative tax rate separately from the line
+     * totals. Prefer that rate: line tax is rounded to currency precision, so
+     * deriving a percentage from line_tax / line_total turns a real 23% rate
+     * into values such as 22.98% for small lines.
+     */
+    private function taxRateForItem($item, Money $net, Money $tax): TaxRate
+    {
+        if (method_exists($item, 'get_taxes') && class_exists('WC_Tax')) {
+            $taxes = (array) $item->get_taxes();
+            $totals = (array) ($taxes['total'] ?? []);
+            $rateIds = array_keys($totals);
+            if (count($rateIds) === 1) {
+                $rates = \WC_Tax::get_rates((string) $rateIds[0]);
+                if (is_array($rates) && count($rates) === 1) {
+                    $rate = self::taxRateFromDecimal((string) ($rates[0]['rate'] ?? ''));
+                    if ($rate instanceof TaxRate) {
+                        return $rate;
+                    }
+                }
+            }
+        }
+
+        // Framework-free tests and unusual legacy orders may not expose a tax
+        // rate ID. Keep the old bounded fallback for those cases.
+        return $this->effectiveRate($net, $tax);
+    }
+
+    private static function taxRateFromDecimal(string $value): ?TaxRate
+    {
+        $value = trim(str_replace(',', '.', $value));
+        if (preg_match('/^\d{1,3}(?:\.\d{1,6})?$/D', $value) !== 1) {
+            return null;
+        }
+        $parts = explode('.', $value, 2);
+        $whole = (int) $parts[0];
+        // WooCommerce expresses the rate as a percentage (23.0000), while
+        // the document model stores the equivalent ratio in parts per million
+        // (230000). Keep the conversion integer-based and deterministic.
+        $fraction = str_pad((string) ($parts[1] ?? ''), 6, '0');
+        $percentScaled = $whole * 1000000 + (int) substr($fraction, 0, 6);
+        $ppm = intdiv($percentScaled + 50, 100);
+        return $ppm <= 1000000 ? TaxRate::fromPartsPerMillion($ppm) : null;
     }
 
     private function date($date, bool $optional = false): string
