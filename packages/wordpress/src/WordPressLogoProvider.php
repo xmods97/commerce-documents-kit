@@ -82,11 +82,28 @@ final class WordPressLogoProvider implements LogoProvider
 
     private function resolve(): ?RasterImage
     {
-        $attachmentId = $this->media->customLogoAttachmentId();
-        if ($attachmentId < 1) {
-            $this->rejection = 'No Custom Logo is set.';
+        $attachmentIds = array_values(array_unique(array_filter([
+            $this->media->customLogoAttachmentId(),
+            $this->media->themeHeaderLogoAttachmentId(),
+        ], static function ($id): bool {
+            return (int) $id > 0;
+        })));
+        if ($attachmentIds === []) {
+            $this->rejection = 'No Custom Logo or theme header logo is set.';
             return null;
         }
+
+        foreach ($attachmentIds as $attachmentId) {
+            $image = $this->resolveAttachment((int) $attachmentId);
+            if ($image instanceof RasterImage) {
+                return $image;
+            }
+        }
+        return null;
+    }
+
+    private function resolveAttachment(int $attachmentId): ?RasterImage
+    {
 
         $mime = strtolower(trim($this->media->mimeTypeOf($attachmentId)));
         if (!in_array($mime, self::ALLOWED_MIME, true)) {

@@ -25,13 +25,15 @@ final class OrderMapper
         // money was confirmed, not the moment the request happened to run.
         $issuedAt = $order->paidAt !== '' ? $order->paidAt : $generatedAt;
 
-        $metadata = $policy instanceof PaidOrderPolicy
-            ? $policy->decision($order)
-            : [
+        if ($policy instanceof PaidOrderPolicy || $policy instanceof CodOrderPolicy) {
+            $metadata = $policy->decision($order);
+        } else {
+            $metadata = [
                 'payment_method' => $order->paymentMethod,
                 'payment_confirmed' => $order->paidAt !== '' ? 'yes' : 'no',
                 'payment_status' => $order->paidAt !== '' ? 'paid' : 'unpaid',
             ];
+        }
         $metadata['order_number'] = $order->orderId;
         $metadata['order_status'] = $order->status;
 

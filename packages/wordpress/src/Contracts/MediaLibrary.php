@@ -16,6 +16,12 @@ interface MediaLibrary
     /** The attachment id set as the site's Custom Logo, or 0 when none is set. */
     public function customLogoAttachmentId(): int;
 
+    /**
+     * The active theme header logo attachment, or 0 when the theme does not
+     * expose one through a safe local media reference.
+     */
+    public function themeHeaderLogoAttachmentId(): int;
+
     /** The attachment's recorded MIME type, or '' when it is unknown. */
     public function mimeTypeOf(int $attachmentId): string;
 

@@ -83,7 +83,6 @@ final class NativeOrderAdapter
             (string) $order->get_status(),
             $this->date($order->get_date_created()),
             method_exists($order, 'get_date_paid') ? $this->date($order->get_date_paid(), true) : '',
-            method_exists($order, 'get_payment_method') ? (string) $order->get_payment_method() : '',
             $currency,
             $language,
             $this->seller,

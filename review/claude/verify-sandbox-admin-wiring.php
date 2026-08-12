@@ -52,6 +52,14 @@ final class RuntimeEvents implements EventLogger
     }
 }
 
+final class FailingRuntimeEvents implements EventLogger
+{
+    public function record(string $event, string $documentId, array $context = []): void
+    {
+        throw new RuntimeException('simulated audit failure');
+    }
+}
+
 final class RuntimePdf implements PdfRenderer
 {
     public function render(DocumentSnapshot $snapshot): string
@@ -131,6 +139,22 @@ try {
         isset($events->events[0][2]['recipient_hash'])
         && $events->events[0][2]['recipient_hash'] === hash('sha256', 'buyer@example.invalid')
         && strpos(json_encode($events->events[0]), 'buyer@example.invalid') === false);
+
+    $rollbackDirectory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cdk-admin-sandbox-rollback-' . bin2hex(random_bytes(8));
+    $rollbackFailed = false;
+    try {
+        (new DeliverDocument(
+            new RuntimePdf(),
+            new SandboxMailer($rollbackDirectory, 'sandbox@example.invalid'),
+            new FailingRuntimeEvents(),
+            'document.sandbox_stored'
+        ))->execute($snapshot, 'buyer@example.invalid', 'Sandbox preview', 'Rollback check');
+    } catch (Throwable $error) {
+        $rollbackFailed = true;
+    }
+    $check('an audit failure removes the committed sandbox artifact',
+        $rollbackFailed && count((array) glob($rollbackDirectory . DIRECTORY_SEPARATOR . '*')) === 0);
+    @rmdir($rollbackDirectory);
     $check('no transport symbols occur in mailer source', preg_match('/\b(wp_mail|mail|fsockopen|curl_exec|stream_socket_client)\s*\(/', file_get_contents($root . '/packages/wordpress/src/SandboxMailer.php')) === 0);
 
     // The recipient must come from the immutable snapshot, never from the

@@ -80,6 +80,7 @@ function section(string $title): void
 final class FakeMediaLibrary implements MediaLibrary
 {
     public $attachmentId = 1;
+    public $themeAttachmentId = 0;
     public $mime = 'image/png';
     public $path = '';
     public $metadata = [];
@@ -88,6 +89,11 @@ final class FakeMediaLibrary implements MediaLibrary
     public function customLogoAttachmentId(): int
     {
         return $this->attachmentId;
+    }
+
+    public function themeHeaderLogoAttachmentId(): int
+    {
+        return $this->themeAttachmentId;
     }
 
     public function mimeTypeOf(int $attachmentId): string

@@ -6,8 +6,9 @@ namespace Xmods\CommerceDocuments\WordPress;
 
 use InvalidArgumentException;
 use RuntimeException;
-use Xmods\CommerceDocuments\Contracts\Mailer;
+use Throwable;
 use Xmods\CommerceDocuments\DocumentSnapshot;
+use Xmods\CommerceDocuments\Contracts\StagedMailer;
 
 /**
  * Writes RFC 2045 .eml files to a local directory.
@@ -15,7 +16,7 @@ use Xmods\CommerceDocuments\DocumentSnapshot;
  * It never calls wp_mail, never opens a socket and has no transport. This is the
  * only Mailer wired anywhere, so no message can leave the machine.
  */
-final class SandboxMailer implements Mailer
+final class SandboxMailer implements StagedMailer
 {
     /** @var string */
     private $directory;
@@ -85,6 +86,25 @@ final class SandboxMailer implements Mailer
         string $message,
         string $pdfBinary
     ): void {
+        $artifact = null;
+        try {
+            $artifact = $this->stage($snapshot, $recipient, $subject, $message, $pdfBinary);
+            $this->commit($artifact);
+        } catch (Throwable $error) {
+            if ($artifact !== null) {
+                $this->discard($artifact);
+            }
+            throw $error;
+        }
+    }
+
+    public function stage(
+        DocumentSnapshot $snapshot,
+        string $recipient,
+        string $subject,
+        string $message,
+        string $pdfBinary
+    ): string {
         // Header fields must not contain a line break. The body may — folding a
         // multi-line body into a single line was rejecting legitimate messages.
         if (filter_var($recipient, FILTER_VALIDATE_EMAIL) === false || self::hasHeaderBreak($subject)) {
@@ -115,7 +135,29 @@ final class SandboxMailer implements Mailer
             . chunk_split(base64_encode($pdfBinary))
             . '--' . $boundary . "--\r\n";
 
-        $this->writeExclusively($id, $eml);
+        return $this->writeExclusively($id, $eml, 'pending');
+    }
+
+    public function commit(string $artifact): string
+    {
+        $source = $this->ownedPath($artifact);
+        $base = pathinfo($source, PATHINFO_FILENAME);
+        if (strtolower((string) pathinfo($source, PATHINFO_EXTENSION)) !== 'pending') {
+            throw new RuntimeException('Sandbox artifact is not pending.');
+        }
+        $target = $this->directory . DIRECTORY_SEPARATOR . $base . '.eml';
+        if (file_exists($target) || !@rename($source, $target)) {
+            throw new RuntimeException('Sandbox email could not be committed.');
+        }
+        return $target;
+    }
+
+    public function discard(string $artifact): void
+    {
+        $path = $this->ownedPath($artifact, false);
+        if ($path !== null) {
+            @unlink($path);
+        }
     }
 
     /**
@@ -123,11 +165,11 @@ final class SandboxMailer implements Mailer
      * pre-created symlink cannot capture the write. The random suffix means two
      * sends in the same second produce two files rather than one.
      */
-    private function writeExclusively(string $id, string $contents): void
+    private function writeExclusively(string $id, string $contents, string $extension): string
     {
         for ($attempt = 0; $attempt < 5; $attempt++) {
             $path = $this->directory . DIRECTORY_SEPARATOR
-                . $id . '-' . gmdate('Ymd\THis') . '-' . bin2hex(random_bytes(6)) . '.eml';
+                . $id . '-' . gmdate('Ymd\THis') . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
             $handle = @fopen($path, 'xb');
             if ($handle === false) {
                 continue;
@@ -140,10 +182,28 @@ final class SandboxMailer implements Mailer
             if ($written === false) {
                 throw new RuntimeException('Sandbox email could not be written.');
             }
-            return;
+            return $path;
         }
 
         throw new RuntimeException('Sandbox email could not be written.');
+    }
+
+    private function ownedPath(string $path, bool $required = true): ?string
+    {
+        $resolved = realpath($path);
+        if ($resolved === false || !is_file($resolved)) {
+            if ($required) {
+                throw new RuntimeException('Sandbox artifact does not exist.');
+            }
+            return null;
+        }
+        $directory = realpath($this->directory);
+        $normalisedPath = str_replace('\\', '/', $resolved);
+        $normalisedDirectory = rtrim(str_replace('\\', '/', (string) $directory), '/');
+        if ($directory === false || strpos($normalisedPath, $normalisedDirectory . '/') !== 0) {
+            throw new RuntimeException('Sandbox artifact is outside its capture directory.');
+        }
+        return $resolved;
     }
 
     private static function normalizeBody(string $body): string

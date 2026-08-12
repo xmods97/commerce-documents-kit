@@ -83,6 +83,20 @@ final class LogoEmbeddingTest extends TestCase
         self::assertSame('', $provider->lastRejection());
     }
 
+    public function testThemeHeaderLogoIsUsedWhenCustomLogoIsUnset(): void
+    {
+        $path = $this->write('geward-logo-primary-1200.png', self::png(1200, 497));
+        $media = $this->media($path);
+        $media->attachmentId = 0;
+        $media->themeAttachmentId = 130;
+
+        $logo = (new WordPressLogoProvider($media))->logo();
+
+        self::assertInstanceOf(RasterImage::class, $logo);
+        self::assertSame(1200, $logo->width());
+        self::assertSame(497, $logo->height());
+    }
+
     public function testAValidLocalJpegInsideUploadsIsAccepted(): void
     {
         if (!function_exists('imagejpeg')) {
@@ -467,6 +481,7 @@ final class LogoEmbeddingTest extends TestCase
 final class FakeMediaLibraryForTests implements MediaLibrary
 {
     public $attachmentId = 1;
+    public $themeAttachmentId = 0;
     public $mime = 'image/png';
     public $path = '';
     public $metadata = [];
@@ -475,6 +490,11 @@ final class FakeMediaLibraryForTests implements MediaLibrary
     public function customLogoAttachmentId(): int
     {
         return $this->attachmentId;
+    }
+
+    public function themeHeaderLogoAttachmentId(): int
+    {
+        return $this->themeAttachmentId;
     }
 
     public function mimeTypeOf(int $attachmentId): string

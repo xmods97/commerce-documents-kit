@@ -28,6 +28,9 @@ final class HtmlRenderer
             && (string) ($metadata['payment_confirmed'] ?? 'no') !== 'yes'
             ? '<p><strong>Nieopłacone — płatność przy odbiorze</strong></p>'
             : '';
+        if ((string) ($metadata['payment_status'] ?? '') === 'cash_on_delivery_unpaid') {
+            $paymentNotice = '<p><strong>Nieopłacone — płatność przy odbiorze</strong></p>';
+        }
         $rows = '';
         foreach ($data['items'] as $item) {
             $rows .= '<tr><td>' . self::escape($item['description']) . '</td>'

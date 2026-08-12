@@ -77,6 +77,24 @@ final class Plugin
 
     public static function generateForOrder($order): DocumentSnapshot
     {
+        return self::generateWithPolicy($order, self::paidPolicy());
+    }
+
+    public static function generateCodForOrder($order): DocumentSnapshot
+    {
+        $settings = get_option('commerce_documents_wc_settings', []);
+        $methods = is_array($settings) ? (array) ($settings['cod_offline_methods'] ?? []) : [];
+        if ($methods === []) {
+            $methods = ['cod'];
+        }
+        return self::generateWithPolicy(
+            $order,
+            new CodOrderPolicy(CodOrderPolicy::DEFAULT_STATUSES, $methods)
+        );
+    }
+
+    private static function generateWithPolicy($order, \Xmods\CommerceDocuments\WooCommerce\Contracts\OrderGenerationPolicy $policy): DocumentSnapshot
+    {
         global $wpdb;
         $settings = get_option('commerce_documents_wc_settings', []);
         if (!is_array($settings)) {
@@ -114,17 +132,6 @@ final class Plugin
             Language::fromTag((string) ($settings['language'] ?? 'pl-PL')),
             function_exists('wc_get_price_decimals') ? (int) wc_get_price_decimals() : 2
         );
-        // Only the paid-order policy is wired. ConfigurableStatusPolicy remains in
-        // the tree for the archived v0.2 tests but is never constructed at runtime:
-        // it can emit fiscal `invoice` / `proforma` types, which this module must
-        // not issue automatically while Fakturownia is the system of record.
-        $policy = new PaidOrderPolicy(
-            (array) ($settings['paid_statuses'] ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES),
-            (string) ($settings['cod_policy'] ?? PaidOrderPolicy::COD_POLICY_NEVER),
-            (array) ($settings['cod_offline_methods'] ?? []),
-            (string) ($settings['policy_name'] ?? 'paid-order-confirmation'),
-            (int) ($settings['policy_version'] ?? 1)
-        );
         $request = (new OrderMapper())->map($adapter->map($order), $policy, gmdate(DATE_ATOM));
 
         $prefix = $wpdb->prefix;
@@ -145,5 +152,20 @@ final class Plugin
             $order
         );
         return $snapshot;
+    }
+
+    private static function paidPolicy(): PaidOrderPolicy
+    {
+        $settings = get_option('commerce_documents_wc_settings', []);
+        $settings = is_array($settings) ? $settings : [];
+        return new PaidOrderPolicy(
+            (array) ($settings['paid_statuses'] ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES),
+            // COD is never an automatic paid document. Its separate manual
+            // action uses CodOrderPolicy and stamps the unpaid notice.
+            PaidOrderPolicy::COD_POLICY_NEVER,
+            [],
+            (string) ($settings['policy_name'] ?? 'paid-order-confirmation'),
+            (int) ($settings['policy_version'] ?? 1)
+        );
     }
 }

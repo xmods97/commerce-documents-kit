@@ -138,8 +138,9 @@ final class BasicPdfRenderer implements PdfRenderer
     /** @param array<string, mixed> $metadata */
     private static function isUnpaid(array $metadata): bool
     {
-        return strtolower((string) ($metadata['payment_method'] ?? '')) === 'cod'
-            && (string) ($metadata['payment_confirmed'] ?? 'no') !== 'yes';
+        return (string) ($metadata['payment_status'] ?? '') === 'cash_on_delivery_unpaid'
+            || (strtolower((string) ($metadata['payment_method'] ?? '')) === 'cod'
+                && (string) ($metadata['payment_confirmed'] ?? 'no') !== 'yes');
     }
 
     /**
