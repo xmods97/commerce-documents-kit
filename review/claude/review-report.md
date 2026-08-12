@@ -17,7 +17,7 @@ Constraints observed: no change to the main Geward repository, no branch or work
 | Medium | 10 | 9 | 1 (M9) | – |
 | Low | 6 | 4 | – | 2 (L2, L6) |
 
-PHP lint: 101 files, 0 errors. Focused runtime checks: 59/59 (fix pass), 73/73 (engine pass), 69/69 (logo pass) and 34/34 (preview wiring), all exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
+PHP lint: 101 files, 0 errors. Focused runtime checks: 59/59 (fix pass), 85/85 (engine), 69/69 (logo) and 34/34 (preview wiring), all exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
 
 **The blocker recorded in the previous pass — the production PDF engine — is now closed.** The decision, the alternatives and the security review are in `pdf-engine-decision.md`; the summary is at the end of this document.
 
@@ -129,7 +129,19 @@ Two things are worth knowing about the implementation. **JPEG is passed through 
 
 **The evidence shows an old logo, and it cannot show the current one.** Nothing about the logo is hardcoded: whatever attachment is set as the site's Custom Logo is what gets embedded, so a document generated on the site carries the current lockup. But the only logo files available offline come from a 2023 backup taken before the branding changed — the bare navy wordmark, no emblem. The current asset lives in the live media library, and fetching it would be precisely the external request this design refuses to make. Point the harness at a copy of the current file to see it in a document.
 
-**What is still open:** no PDF rasteriser exists offline, so nobody has seen a *page*. The browser's PDF viewer loads both evidence documents and reads their titles, which shows PDFium accepts a file carrying an image XObject; everything else is proven by reading the file back. One person opening `evidence/pdf-logo-with.pdf` closes it. There is still no layout match against the Fakturownia reference.
+### The first look at a rendered page found three layout defects
+
+Somebody opened the preview and photographed it, which is the one check this work could not run itself. Three things were wrong, and none of them was visible to any check that reads a PDF as data:
+
+- **A long item description printed on top of the quantity beside it** — `60×30×2 cm` and `2,5 szt.` overlapped by 3.9 pt. The description column wrapped at a width chosen by eye, with no allowance for how far back a right-aligned quantity reaches.
+- **The VAT summary's gross column printed on top of its tax column** — `108,68581,18 PLN`, a 2.8 pt overlap. That column repeated the currency on every row while the items table above it did not, and the extra ` PLN` was exactly what pushed it over.
+- **Large amounts overflowed their columns.** Found by the new check rather than by eye, but real: a five- or six-figure amount is wider than the 38 pt the tax column allows.
+
+The fixes are structural rather than nudged numbers. The description width is now *derived* from where the quantity column can start, less a gutter, so the two cannot be sized inconsistently again. The currency is named once in the VAT summary heading. And every right-aligned numeric cell now shrinks to fit its column instead of overflowing — truncation was rejected outright, because `1 234,5…` reads as a different amount, and a wrong number is worse than a small one.
+
+**What matters more than the fixes is that this class of defect is now caught automatically.** `verify-pdf-engine.php` E13 reads the finished document as a *layout*: it recovers the position, font, size and glyphs of every text run, measures each with the same metrics the renderer used, and fails if two runs sharing a baseline come within 2 pt of each other. It runs against five documents, including one with long Polish descriptions and one with amounts far above any real order. Nothing that reads a PDF as data could have seen these bugs; this can.
+
+**What is still open:** no PDF rasteriser exists offline, so nobody has seen a *page* from inside this work. The browser's PDF viewer loads both evidence documents and reads their titles, which shows PDFium accepts a file carrying an image XObject; everything else is proven by reading the file back. One person opening `evidence/pdf-logo-with.pdf` closes it. There is still no layout match against the Fakturownia reference.
 
 **Two things for the site owner rather than for the code.** If the Custom Logo is an **SVG**, no logo appears: SVG is refused deliberately at two levels, and the answer is to set a PNG as the Custom Logo, not to loosen the parser. And the library holds a navy-on-light and an inverted white-on-dark family — whichever is set is embedded faithfully, so the inverted one would put a dark block on a white invoice. Both are worth checking on the live site before the first document goes out.
 

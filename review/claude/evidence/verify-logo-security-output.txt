@@ -69,7 +69,7 @@
   PASS  the document without a logo is structurally valid
   PASS  the document without a logo carries the same text
   PASS  a provider that throws is not able to stop a document being issued
-  PASS  rendering with a logo stays deterministic — sha256 eab1f1147b064a87
+  PASS  rendering with a logo stays deterministic — sha256 74d3ed8f1ebec1ab
   PASS  the logo adds a bounded amount to the document — 38 KB added
 
 === L5 — the embedded pixels are the source pixels ===

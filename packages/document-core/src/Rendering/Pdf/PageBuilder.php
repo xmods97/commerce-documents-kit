@@ -127,6 +127,33 @@ final class PageBuilder
     }
 
     /**
+     * Right-aligned text that shrinks until it fits its column.
+     *
+     * Wrapping is not an option for a number in a table cell, and truncating one
+     * is worse than either: `1 234,5…` reads as a different amount. So an
+     * oversized value is set smaller rather than allowed to run into the column
+     * beside it, down to a floor that no realistic amount reaches.
+     *
+     * @return float the size actually used
+     */
+    public function textRightFitted(
+        float $rightEdge,
+        float $y,
+        string $text,
+        float $size,
+        bool $bold,
+        float $maxWidth,
+        float $minimumSize = 5.0
+    ): float {
+        $fitted = $size;
+        while ($fitted > $minimumSize && $this->widthOf($text, $fitted, $bold) > $maxWidth) {
+            $fitted -= 0.25;
+        }
+        $this->textRight($rightEdge, $y, $text, $fitted, $bold);
+        return $fitted;
+    }
+
+    /**
      * Writes the running footer on an already-built page. Called after layout,
      * when the total page count is known.
      */

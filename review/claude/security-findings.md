@@ -16,9 +16,9 @@ Severity key: **Critical** = data loss or unusable system / **High** = blocks ex
 | Low | 6 | 4 | – | 2 (L2, L6) |
 
 Verification: `review/claude/verify-fixes.php` — 59 checks, 59 pass, exit 0 (`evidence/verify-fixes-output.txt`).
-`review/claude/verify-pdf-engine.php` — 73 checks, 73 pass, exit 0 (`evidence/verify-pdf-engine-output.txt`).
+`review/claude/verify-pdf-engine.php` — 85 checks, 85 pass, exit 0 (`evidence/verify-pdf-engine-output.txt`).
 `review/claude/verify-logo-security.php` — 69 checks, 69 pass, exit 0 (`evidence/verify-logo-security-output.txt`).
-PHP lint clean on 100 files.
+PHP lint clean on 101 files.
 
 **The PDF engine blocker is closed.** A production engine was selected, built and reviewed — see *Production PDF engine* below and `pdf-engine-decision.md`. Delivery remains unwired by design; that is the separate sandbox stage, not a blocker.
 

@@ -920,6 +920,117 @@ check('the preview sends the document to the browser and nowhere else',
 check('the logo provider is the WordPress one, constructed without arguments',
     strpos($controller, 'new WordPressLogoProvider()') !== false);
 
+section('E13 — no two pieces of text share the same space');
+
+/**
+ * Finds text that collides on the page.
+ *
+ * Everything else in this harness reads the document as data; this reads it as a
+ * *layout*. It recovers the position, font, size and glyphs of every text run,
+ * measures each run with the same font metrics the renderer used, and checks
+ * that runs sharing a baseline keep a gap between them.
+ *
+ * This exists because two columns were printing on top of each other — a long
+ * item description running into the quantity beside it, and the VAT summary's
+ * gross column running into its tax column — while every structural and content
+ * check passed. Nothing that reads a PDF as data can see that; only a rasteriser
+ * or an arithmetic check like this one can.
+ *
+ * @param array<string, EmbeddedFont> $fonts resource name => font
+ * @return string[] descriptions of each collision
+ */
+function collisions(string $content, array $fonts, float $minimumGap = 2.0): array
+{
+    preg_match_all(
+        '#BT\s*/(F\d+) ([\d.]+) Tf\s*(-?[\d.]+) (-?[\d.]+) Td\s*<([0-9A-Fa-f]*)> Tj\s*ET#',
+        $content,
+        $runs,
+        PREG_SET_ORDER
+    );
+
+    $lines = [];
+    foreach ($runs as $run) {
+        $font = $fonts[$run[1]] ?? null;
+        if ($font === null) {
+            continue;
+        }
+        $size = (float) $run[2];
+        $x = (float) $run[3];
+        $y = (float) $run[4];
+
+        $widths = $font->widths();
+        $width = 0.0;
+        foreach (str_split($run[5], 4) as $glyphHex) {
+            if (strlen($glyphHex) === 4) {
+                $width += ($widths[hexdec($glyphHex)] ?? 0) * $size / 1000;
+            }
+        }
+
+        $text = '';
+        foreach ($font->reverseMap() as $glyph => $codepoint) {
+            unset($glyph, $codepoint);
+            break;
+        }
+        $key = number_format($y, 2, '.', '');
+        $lines[$key][] = ['x' => $x, 'end' => $x + $width, 'hex' => $run[5], 'size' => $size];
+    }
+
+    $problems = [];
+    foreach ($lines as $y => $runsOnLine) {
+        usort($runsOnLine, static function (array $a, array $b): int {
+            return $a['x'] <=> $b['x'];
+        });
+        $count = count($runsOnLine);
+        for ($i = 1; $i < $count; $i++) {
+            $gap = $runsOnLine[$i]['x'] - $runsOnLine[$i - 1]['end'];
+            if ($gap < $minimumGap) {
+                $problems[] = sprintf(
+                    'y=%s: run ending at %.2f is %.2f pt from the next starting at %.2f',
+                    $y,
+                    $runsOnLine[$i - 1]['end'],
+                    $gap,
+                    $runsOnLine[$i]['x']
+                );
+            }
+        }
+    }
+    return $problems;
+}
+
+$layoutFonts = ['F1' => EmbeddedFont::regular(), 'F2' => EmbeddedFont::bold()];
+
+$layoutCases = [
+    'the standard document' => $pdf,
+    'the paginated document' => $longPdf,
+    'the hostile-input document' => $hostilePdf,
+    'a document with long Polish descriptions' => $renderer->render(snapshot(
+        [
+            ['Płyta granitowa Nero Assoluto, polerowana 60×30×2 cm', 250, 18900, 230000],
+            ['Bardzo długa nazwa produktu kamiennego z dodatkowymi parametrami technicznymi', 123456, 1234567, 230000],
+            ['Krótka', 1, 1, 0],
+        ],
+        ['order_number' => '4242', 'payment_method' => 'cod', 'payment_confirmed' => 'no']
+    )),
+    // A single line worth about a million zloty — far above any real order here,
+    // and the point at which the shrink-to-fit rule is doing the work.
+    'a document with implausibly large amounts' => $renderer->render(snapshot(
+        [['Pozycja', 9999, 999999, 230000]],
+        ['order_number' => '999999999']
+    )),
+];
+
+foreach ($layoutCases as $label => $document) {
+    $file = new PdfFile($document);
+    $problems = [];
+    foreach ($file->pageObjects() as $page) {
+        foreach (collisions($file->contentOfPage($page), $layoutFonts) as $problem) {
+            $problems[] = $problem;
+        }
+    }
+    check('no text collides in ' . $label, $problems === [],
+        $problems === [] ? 'clear' : implode(' | ', array_slice($problems, 0, 3)));
+}
+
 section('E12 — M10 follow-up: legacy types readable, not issuable');
 
 $readable = [];

@@ -64,7 +64,7 @@
   PASS  malformed UTF-8 becomes the replacement character, not a different letter
 
 === E8 — determinism and bounded size ===
-  PASS  the same snapshot renders byte-identically — sha256 9a5724bb6a12139c
+  PASS  the same snapshot renders byte-identically — sha256 a90480fd9d0805ca
   PASS  no clock reading enters the file
   PASS  document dates come from the snapshot
   PASS  a 5000-item order stays within the page cap — 11 pages
@@ -97,10 +97,17 @@
   PASS  the preview sends the document to the browser and nowhere else — no transport and no write in the controller
   PASS  the logo provider is the WordPress one, constructed without arguments
 
+=== E13 — no two pieces of text share the same space ===
+  PASS  no text collides in the standard document — clear
+  PASS  no text collides in the paginated document — clear
+  PASS  no text collides in the hostile-input document — clear
+  PASS  no text collides in a document with long Polish descriptions — clear
+  PASS  no text collides in a document with implausibly large amounts — clear
+
 === E12 — M10 follow-up: legacy types readable, not issuable ===
   PASS  every legacy type is still constructible, so historical rows stay readable — quote, proforma, invoice, receipt, credit_note, order_confirmation, correction
   PASS  only order_confirmation and correction may be issued — order_confirmation, correction
   PASS  issuing a legacy fiscal type is refused — invoice, proforma, receipt, credit_note, quote
   PASS  the refusal sits in the application service, not only in the order policy
 
-checks=80 pass=80 fail=0
+checks=85 pass=85 fail=0

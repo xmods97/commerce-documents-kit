@@ -190,7 +190,9 @@ checked=92  failed=0
 
 ### Focused runtime checks
 
-`review/claude/verify-pdf-engine.php` — **73 checks, 73 pass, 0 fail, exit 0**. Full output: `evidence/verify-pdf-engine-output.txt`.
+`review/claude/verify-pdf-engine.php` — **85 checks, 85 pass, 0 fail, exit 0**. Full output: `evidence/verify-pdf-engine-output.txt`.
+
+*(Originally 73. E11 grew from one assertion to eight when the renderer was wired to the admin preview, and E13 — the layout collision detector — added five.)*
 
 The harness renders documents with `EmbeddedFontPdfRenderer` and then reads them back: it walks the cross-reference table, extracts the streams, and recovers the page text **through the document's own `/ToUnicode` CMap**. That is what makes the Polish assertions meaningful — they prove the glyph ids written to the page correspond to the characters that went in, rather than proving a string appears somewhere in the file.
 
@@ -206,7 +208,8 @@ The harness renders documents with `EmbeddedFontPdfRenderer` and then reads them
 | E8 — determinism and size | 7 | pass (three renders byte-identical, no clock reading, dates from the snapshot, 5 000 items → 11 pages / 309 KB of a 350 KB ceiling, omissions declared on the document, normal document 123 KB) |
 | E9 — no remote access | 10 | pass (no network call, single filesystem read, constant font path, style validated against two constants, private constructor, digest check, no URL/active content/external resource, no HTML or CSS stage) |
 | E10 — glyph outlines | 1 | pass (**339/339 subset outlines identical to the source DejaVu Sans**, composites compared recursively through their components) |
-| E11 — delivery posture | 1 | pass (no plugin code path constructs a PDF renderer or a mailer) |
+| E11 — delivery posture | 8 | pass (exactly one renderer construction, in `AdminController`, inside the preview factory; no mailer and no `DeliverDocument` anywhere; `admin_post` registration only; capability plus per-document nonce; no transport in the controller; the WordPress logo provider constructed with no arguments) |
+| E13 — no overlapping text | 5 | pass (the standard, paginated, hostile-input, long-Polish-description and implausibly-large-amount documents all lay out with at least 2 pt between neighbouring runs on a baseline) |
 | E12 — M10 follow-up | 4 | pass (7/7 legacy types still constructible for reading, only `order_confirmation` and `correction` issuable, 5/5 legacy types refused at issue, refusal sits in `GenerateDocument`) |
 
 E10 runs only when the directory holding the source `DejaVuSans.ttf` is passed as the first argument (or via `PDF_FONT_SOURCE_DIR`); it reports `SKIP` otherwise so the harness stays runnable without the backup tree. It was run with the source present:
@@ -332,6 +335,26 @@ Still not looked at: the page. No PDF rasteriser exists offline. Opening `eviden
 
 `vendor/` remains absent. `PluginIsolationTest` gained two methods; they are written and lint-clean but **not executed**. Their assertions are source-level and are duplicated in `verify-admin-preview.php` P6 and `verify-pdf-engine.php` E11, both of which do execute.
 
-## 9. Environment note (not a product finding)
+## 9. The first rasterised page — three layout defects
+
+A rendered page was finally looked at, from outside this work. It showed two collisions, and chasing them turned up a third:
+
+| Defect | Measured | Cause | Fix |
+|---|---|---|---|
+| Item description printed over the quantity | 3.93 pt overlap | The description wrap width was chosen by eye, with no allowance for how far back a right-aligned quantity reaches | The width is now *derived*: `COLUMN_QUANTITY − TABLE_LEFT − QUANTITY_RESERVE − gutter` |
+| VAT summary gross printed over VAT summary tax | 2.79 pt overlap | That column repeated ` PLN` on every row while the items table did not | The currency is named once, in the section heading |
+| Large amounts overflowed their columns | up to 12.65 pt | A five-figure amount is wider than the 38 pt the tax column allows | Every right-aligned numeric cell shrinks to fit, down to a 5 pt floor |
+
+Truncation was rejected for the third: `1 234,5…` reads as a different amount, and a wrong number is worse than a small one.
+
+### The check that now catches this
+
+`verify-pdf-engine.php` E13 reads the document as a **layout** rather than as data. For every text run it recovers the font resource, size, position and glyph ids from the content stream, measures the run with the same metrics the renderer used, groups runs by baseline, and fails if two neighbours come within 2 pt of each other.
+
+It runs against five documents: the standard one, the 140-item paginated one, the hostile-input one, one with long Polish descriptions, and one with a line worth about a million zloty. All five are clear.
+
+This is the first check here that could have caught these bugs. Structure, text recovery, pixel comparison and font integrity all passed while two columns were printing on top of each other.
+
+## 10. Environment note (not a product finding)
 
 On the second harness run, `SandboxMailer::__construct()` threw `Sandbox mail directory is not writable` for a directory it had itself created on the previous run. This is a Windows/OneDrive ACL artifact of the review sandbox, not a defect in the mailer; the harness was changed to use a unique directory per run and the check then passed. I mention it only so the log is not misread.

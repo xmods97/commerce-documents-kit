@@ -23,34 +23,35 @@ VAT
 Netto
 Podatek
 Brutto
-Płyta granitowa Nero Assoluto, polerowana 60×30×2 cm
-2,5 szt.
+Płyta granitowa Nero Assoluto, polerowana
+60×30×2 cm
 189,00
 23%
 472,50
 108,68
 581,18
+2,5 szt.
 Cięcie i obróbka krawędzi — usługa
-1 szt.
 120,00
 23%
 120,00
 27,60
 147,60
+1 szt.
 Klej montażowy
-3 szt.
 24,50
 8%
 73,50
 5,88
 79,38
+3 szt.
 Netto
 666,00 PLN
 Podatek
 142,16 PLN
 Razem Brutto
 808,16 PLN
-Zestawienie VAT
+Zestawienie VAT (PLN)
 VAT
 Netto
 Podatek
@@ -58,11 +59,11 @@ Brutto
 8%
 73,50
 5,88
-79,38 PLN
+79,38
 23%
 592,50
 136,28
-728,78 PLN
+728,78
 ORDER_CONFIRMATION/2026/000042
 Strona 1 z 1
 

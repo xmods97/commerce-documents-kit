@@ -55,7 +55,20 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
     private const MAX_NOTE = 400;
 
     private const TABLE_LEFT = 48.0;
-    private const DESCRIPTION_WIDTH = 240.0;
+
+    /**
+     * The description column has to stop short of where the quantity column can
+     * start, not merely short of it. Quantities are right-aligned on
+     * COLUMN_QUANTITY, so the widest quantity a line can carry reaches back to
+     * COLUMN_QUANTITY - QUANTITY_RESERVE; the description wraps before that, less
+     * a gutter. Sizing this by eye is how "60×30×2 cm" ended up printed on top of
+     * "2,5 szt.".
+     */
+    private const QUANTITY_RESERVE = 56.0;
+    private const COLUMN_GUTTER = 6.0;
+    private const DESCRIPTION_WIDTH = self::COLUMN_QUANTITY - self::TABLE_LEFT
+        - self::QUANTITY_RESERVE - self::COLUMN_GUTTER;
+
     /** Right edges of the numeric columns. */
     private const COLUMN_QUANTITY = 302.0;
     private const COLUMN_UNIT_NET = 368.0;
@@ -66,6 +79,18 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
 
     private const BODY_SIZE = 8.0;
     private const ROW_LEADING = 10.5;
+
+    /**
+     * Usable width of each right-aligned column: the distance to the column
+     * before it, less a gutter. A value wider than this is set smaller rather
+     * than allowed to overlap its neighbour.
+     */
+    private const CELL_GUTTER = 4.0;
+
+    private static function columnWidth(float $rightEdge, float $previousEdge): float
+    {
+        return $rightEdge - $previousEdge - self::CELL_GUTTER;
+    }
 
     /** The box the logo is fitted into, top right of the first page. */
     private const LOGO_MAX_WIDTH = 150.0;
@@ -270,12 +295,17 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
                 (int) ($item['quantity']['scale'] ?? 0)
             );
             $unit = self::field((string) ($item['unit'] ?? ''));
-            $page->textRight(self::COLUMN_QUANTITY, $y, trim($quantity . ' ' . $unit), self::BODY_SIZE);
-            $page->textRight(self::COLUMN_UNIT_NET, $y, $this->money((int) ($item['unit_net'] ?? 0)), self::BODY_SIZE);
-            $page->textRight(self::COLUMN_RATE, $y, self::percentage((int) ($item['tax_rate_ppm'] ?? 0)), self::BODY_SIZE);
-            $page->textRight(self::COLUMN_NET, $y, $this->money((int) ($item['net'] ?? 0)), self::BODY_SIZE);
-            $page->textRight(self::COLUMN_TAX, $y, $this->money((int) ($item['tax'] ?? 0)), self::BODY_SIZE);
-            $page->textRight(self::COLUMN_GROSS, $y, $this->money((int) ($item['gross'] ?? 0)), self::BODY_SIZE);
+            foreach ($this->numericCells($item) as $cell) {
+                $page->textRightFitted($cell[0], $y, $cell[1], self::BODY_SIZE, false, $cell[2]);
+            }
+            $page->textRightFitted(
+                self::COLUMN_QUANTITY,
+                $y,
+                trim($quantity . ' ' . $unit),
+                self::BODY_SIZE,
+                false,
+                self::QUANTITY_RESERVE - self::CELL_GUTTER
+            );
 
             $page->moveTo($y - $height);
             $rendered++;
@@ -296,6 +326,43 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
         $page->advance(2.0);
         $page->rule($page->y());
         $page->advance(14.0);
+    }
+
+    /**
+     * The numeric cells of one line item as [right edge, text, usable width].
+     *
+     * @param array<string, mixed> $item
+     * @return array<int, array{0:float,1:string,2:float}>
+     */
+    private function numericCells(array $item): array
+    {
+        return [
+            [
+                self::COLUMN_UNIT_NET,
+                $this->money((int) ($item['unit_net'] ?? 0)),
+                self::columnWidth(self::COLUMN_UNIT_NET, self::COLUMN_QUANTITY),
+            ],
+            [
+                self::COLUMN_RATE,
+                self::percentage((int) ($item['tax_rate_ppm'] ?? 0)),
+                self::columnWidth(self::COLUMN_RATE, self::COLUMN_UNIT_NET),
+            ],
+            [
+                self::COLUMN_NET,
+                $this->money((int) ($item['net'] ?? 0)),
+                self::columnWidth(self::COLUMN_NET, self::COLUMN_RATE),
+            ],
+            [
+                self::COLUMN_TAX,
+                $this->money((int) ($item['tax'] ?? 0)),
+                self::columnWidth(self::COLUMN_TAX, self::COLUMN_NET),
+            ],
+            [
+                self::COLUMN_GROSS,
+                $this->money((int) ($item['gross'] ?? 0)),
+                self::columnWidth(self::COLUMN_GROSS, self::COLUMN_TAX),
+            ],
+        ];
     }
 
     /** @param array<string, string> $labels */
@@ -331,13 +398,22 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
         ] as $row) {
             $y = $page->y();
             $bold = (bool) $row[2];
-            $page->textRight(self::COLUMN_NET, $y, (string) $row[0], $bold ? 11.0 : 9.5, $bold);
-            $page->textRight(
+            $size = $bold ? 11.0 : 9.5;
+            $page->textRightFitted(
+                self::COLUMN_NET,
+                $y,
+                (string) $row[0],
+                $size,
+                $bold,
+                self::COLUMN_NET - 320.0
+            );
+            $page->textRightFitted(
                 self::COLUMN_GROSS,
                 $y,
                 $this->money((int) $row[1]) . ' ' . $currency,
-                $bold ? 11.0 : 9.5,
-                $bold
+                $size,
+                $bold,
+                self::columnWidth(self::COLUMN_GROSS, self::COLUMN_NET)
             );
             $page->advance($bold ? 18.0 : 13.0);
         }
@@ -372,7 +448,9 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
 
         $page->ensure(30.0 + count($groups) * 12.0);
         $page->advance(6.0);
-        $page->line(self::TABLE_LEFT, $labels['tax_summary'], 9.0, true, 13.0);
+        // The currency is named once in the heading. Repeating it on every gross
+        // cell widened that column into the tax column beside it.
+        $page->line(self::TABLE_LEFT, $labels['tax_summary'] . ' (' . $currency . ')', 9.0, true, 13.0);
 
         $y = $page->y();
         $page->textRight(self::COLUMN_RATE, $y, $labels['tax_rate'], self::BODY_SIZE, true);
@@ -383,15 +461,21 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
 
         foreach ($groups as $rate => $amounts) {
             $y = $page->y();
-            $page->textRight(self::COLUMN_RATE, $y, self::percentage((int) $rate), self::BODY_SIZE);
-            $page->textRight(self::COLUMN_NET, $y, $this->money($amounts['net']), self::BODY_SIZE);
-            $page->textRight(self::COLUMN_TAX, $y, $this->money($amounts['tax']), self::BODY_SIZE);
-            $page->textRight(
-                self::COLUMN_GROSS,
-                $y,
-                $this->money($amounts['gross']) . ' ' . $currency,
-                self::BODY_SIZE
-            );
+            foreach ([
+                [self::COLUMN_RATE, self::percentage((int) $rate), self::COLUMN_UNIT_NET],
+                [self::COLUMN_NET, $this->money($amounts['net']), self::COLUMN_RATE],
+                [self::COLUMN_TAX, $this->money($amounts['tax']), self::COLUMN_NET],
+                [self::COLUMN_GROSS, $this->money($amounts['gross']), self::COLUMN_TAX],
+            ] as $cell) {
+                $page->textRightFitted(
+                    (float) $cell[0],
+                    $y,
+                    (string) $cell[1],
+                    self::BODY_SIZE,
+                    false,
+                    self::columnWidth((float) $cell[0], (float) $cell[2])
+                );
+            }
             $page->advance(11.0);
         }
     }

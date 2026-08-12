@@ -7,9 +7,9 @@ Evidence: `evidence/verify-pdf-engine-output.txt`
 
 **Decision: build the engine into the package — a data-to-PDF writer with an embedded TrueType subset — rather than adopt Dompdf or mPDF.**
 
-Implemented as `Xmods\CommerceDocuments\Rendering\EmbeddedFontPdfRenderer` behind the existing `PdfRenderer` interface. 73 checks pass, exit 0.
+Implemented as `Xmods\CommerceDocuments\Rendering\EmbeddedFontPdfRenderer` behind the existing `PdfRenderer` interface. 85 checks pass, exit 0.
 
-A later pass added the site logo — see *The logo* below. 64 further checks pass, exit 0 (`evidence/verify-logo-security-output.txt`).
+A later pass added the site logo — see *The logo* below. 69 further checks pass, exit 0 (`evidence/verify-logo-security-output.txt`).
 
 ---
 
@@ -125,7 +125,8 @@ Failure is always "no logo": a missing, unreadable, oversized, wrong-format or h
 
 ## What this does not settle
 
-- **No visual confirmation of the page.** No PDF rasteriser is available offline (no Ghostscript, poppler, qpdf or mutool on this machine). Both evidence documents were opened in the local browser's PDF viewer, which loaded them and read the title from the info dictionary — that shows PDFium accepts a document with an image XObject, not that the page looks right. **One human should open `evidence/pdf-logo-with.pdf` and look at it.**
+- **Layout is now checked arithmetically, after a rendered page proved it had to be.** The first time anyone looked at a page, two columns were printing on top of each other — a long item description over the quantity, and the VAT summary's gross over its tax — while every structural, content, font and pixel check passed. `verify-pdf-engine.php` E13 now reads the document as a layout: it recovers the position, font, size and glyphs of every text run, measures each with the renderer's own metrics, and fails if two runs sharing a baseline come within 2 pt. The column widths are derived rather than chosen by eye, and numeric cells shrink to fit rather than overflow — truncation was rejected because a shortened amount reads as a different amount.
+- **No visual confirmation of the page from inside this work.** No PDF rasteriser is available offline (no Ghostscript, poppler, qpdf or mutool on this machine). Both evidence documents were opened in the local browser's PDF viewer, which loaded them and read the title from the info dictionary — that shows PDFium accepts a document with an image XObject, not that the page looks right. **One human should open `evidence/pdf-logo-with.pdf` and look at it.**
   The logo itself *has* been looked at: the image is extracted back out of the finished PDF into `evidence/pdf-logo-extracted.png`, and it is the GEWARD wordmark, navy on white, undistorted.
 - **The evidence documents do not show the site's current logo, and cannot.** Nothing about the logo is hardcoded: the provider reads whatever attachment is set as the site's Custom Logo, so on the live site the current lockup — emblem plus wordmark — is what gets embedded. But the only logo files available offline come from a 2023 site backup, and the branding has changed since: those files are the older navy wordmark, with no emblem. The current asset exists only in the live media library, and fetching it would mean an external request, which this work is not allowed to make and the renderer is designed never to make. So the evidence proves the pipeline, not the artwork.
   To see the real logo in a document, either run the harness against a copy of the current logo file (`php review/claude/verify-logo-security.php <path-to-logo.png>`), or generate a document on the site itself once the renderer is wired.

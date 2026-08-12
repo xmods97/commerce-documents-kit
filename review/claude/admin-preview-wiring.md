@@ -71,7 +71,7 @@ Not checked visually: the page. There is still no PDF rasteriser offline, so nob
 |---|---|
 | PHP lint | 101 files, 0 errors |
 | `verify-admin-preview.php` | 34/34, exit 0 |
-| `verify-pdf-engine.php` | 73/73, exit 0 |
+| `verify-pdf-engine.php` | 85/85, exit 0 |
 | `verify-logo-security.php` | 69/69, exit 0 |
 | `verify-fixes.php` | 59/59, exit 0 |
 | `git diff --check` | clean |
