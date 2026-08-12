@@ -355,6 +355,38 @@ It runs against five documents: the standard one, the 140-item paginated one, th
 
 This is the first check here that could have caught these bugs. Structure, text recovery, pixel comparison and font integrity all passed while two columns were printing on top of each other.
 
-## 10. Environment note (not a product finding)
+## 10. Sandbox email capture — independent review of `320840c`
+
+Offline checks only. No email was sent, no migration run, no external service contacted.
+
+| Check | Result |
+|---|---|
+| PHP lint | 103 files, 0 errors |
+| `verify-sandbox-admin-wiring.php` | 18/18, exit 0 (was 10/10 before this review) |
+| `verify-pdf-engine.php` | 87/87, exit 0 |
+| `verify-fixes.php` | 59/59, exit 0 — the OneDrive ACL problem did not recur |
+| `verify-logo-security.php` | 69/69, exit 0 |
+| `verify-admin-preview.php` | 34/34, exit 0 |
+| `git diff --check` | clean |
+| PHPUnit | not run — `vendor/` absent |
+
+### What the review found
+
+One Medium, fixed: **a capture directory inside the web root was accepted.** Demonstrated before the fix by constructing `SandboxMailer` against a simulated `ABSPATH`; both a direct path under it and a `..` path resolving back inside it were accepted. Since a capture holds the buyer's name, their email address and the whole rendered invoice, that is a personal-data disclosure waiting for a directory listing or a backup crawler. `SandboxMailer` now resolves the directory with `realpath()` and refuses anything at or inside `realpath(ABSPATH)`.
+
+Two Lows recorded and left open by choice: captures are never pruned, and the failure path writes the exception message to the PHP error log. Both are in `security-findings.md`.
+
+### Two of the checkpoint's ten checks did not test their claims
+
+- `pdf attachment is present` matched the string `application/pdf`. An empty or truncated attachment would have passed.
+- `multiline body is preserved as MIME text` matched a `Content-Transfer-Encoding: base64` header and never looked at the body — so a body flattened to one line, the exact defect M6 fixed, would have passed.
+
+Both now decode the MIME parts: the attachment must equal the rendered document byte for byte, and the text part must decode back to `"Line 1\r\nLine 2"`. Added alongside them: the recipient's provenance (snapshot, never the request), the pre-render address validation, the audit context carrying a hash rather than the address, and three web-root cases.
+
+### Verified by reading, not by running
+
+The capability check, the nonce, the `admin_post` registration and the absence of `admin_post_nopriv_*` are source-level facts confirmed by grep and by the harness; no WordPress runtime was involved. PHP 7.4 compatibility was checked by scanning `packages/` for 8.0-only syntax — none present.
+
+## 11. Environment note (not a product finding)
 
 On the second harness run, `SandboxMailer::__construct()` threw `Sandbox mail directory is not writable` for a directory it had itself created on the previous run. This is a Windows/OneDrive ACL artifact of the review sandbox, not a defect in the mailer; the harness was changed to use a unique directory per run and the check then passed. I mention it only so the log is not misread.

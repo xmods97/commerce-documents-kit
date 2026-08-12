@@ -34,8 +34,48 @@ final class SandboxMailer implements Mailer
         if (!is_dir($directory) || !is_writable($directory)) {
             throw new RuntimeException('Sandbox mail directory is not writable.');
         }
-        $this->directory = $directory;
+
+        // Resolve before anything is stored: the directory arrives from a
+        // wp-config constant, so `..` in it would otherwise decide where files
+        // land at write time rather than here.
+        $resolved = realpath($directory);
+        if ($resolved === false) {
+            throw new RuntimeException('Sandbox mail directory does not resolve.');
+        }
+        self::assertOutsideWebRoot($resolved);
+
+        $this->directory = $resolved;
         $this->from = $from;
+    }
+
+    /**
+     * A capture holds the buyer's name, their email address and the whole
+     * rendered document. Inside the web root that is a personal-data disclosure
+     * waiting for a directory listing, a misconfigured handler or a backup
+     * crawler, so it is refused outright rather than mitigated with a deny file
+     * that only some servers honour.
+     */
+    private static function assertOutsideWebRoot(string $directory): void
+    {
+        if (!defined('ABSPATH')) {
+            // No WordPress request context — CLI, tests. Nothing is being served.
+            return;
+        }
+        $root = realpath((string) constant('ABSPATH'));
+        if ($root === false) {
+            return;
+        }
+
+        $normalisedRoot = rtrim(str_replace('\\', '/', $root), '/');
+        $normalisedDirectory = rtrim(str_replace('\\', '/', $directory), '/');
+        if ($normalisedDirectory === $normalisedRoot
+            || strpos($normalisedDirectory . '/', $normalisedRoot . '/') === 0
+        ) {
+            throw new RuntimeException(
+                'Sandbox mail directory must sit outside the web root; '
+                . 'captures contain the buyer address and the rendered document.'
+            );
+        }
     }
 
     public function send(

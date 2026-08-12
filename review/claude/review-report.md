@@ -17,7 +17,7 @@ Constraints observed: no change to the main Geward repository, no branch or work
 | Medium | 10 | 9 | 1 (M9) | – |
 | Low | 6 | 4 | – | 2 (L2, L6) |
 
-PHP lint: 101 files, 0 errors. Focused runtime checks: 59/59 (fix pass), 85/85 (engine), 69/69 (logo) and 34/34 (preview wiring), all exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
+PHP lint: 103 files, 0 errors. Focused runtime checks: 59/59 (fix pass), 87/87 (engine), 69/69 (logo), 34/34 (preview wiring) and 18/18 (sandbox capture), all exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
 
 **The blocker recorded in the previous pass — the production PDF engine — is now closed.** The decision, the alternatives and the security review are in `pdf-engine-decision.md`; the summary is at the end of this document.
 
@@ -148,6 +148,18 @@ The fixes are structural rather than nudged numbers. The description width is no
 ---
 
 ## Current delivery posture
+
+### Sandbox email capture, reviewed independently (`320840c`)
+
+A later checkpoint, which I did not write, added an admin-only sandbox capture: one `admin_post` action that renders the document with the current engine and writes an `.eml` through `SandboxMailer`. **Verdict: it holds.** Capability then a per-document nonce; no `wp_mail`, SMTP, socket or HTTP anywhere; registered on `admin_post` only, with no `nopriv` variant, so no anonymous request and no order hook or scheduler can reach it; the recipient comes from the decrypted snapshot rather than the request, and an invalid address aborts before anything is rendered; the audit event is `document.sandbox_stored`, deliberately distinct from `document.sent`, and its context carries a hash rather than the address.
+
+**One Medium found and fixed.** The capture directory is a `wp-config` constant, and `SandboxMailer` only checked that it existed and was writable — so pointing it at `wp-content/uploads/…` would have published every capture, and a capture holds the buyer's name, their email address and the whole rendered invoice. I confirmed the acceptance against a simulated `ABSPATH`, including a `..` path that resolved back inside it. The mailer now resolves the directory with `realpath()` and refuses any location at or inside the web root. A deny file was considered and rejected — only some servers honour `.htaccess`, and refusing outright is the property worth having.
+
+**Two of the checkpoint's own ten checks did not test what they claimed**: one matched the string `application/pdf` rather than decoding the attachment, and one matched a `Content-Transfer-Encoding` header rather than looking at the body — so a body flattened to a single line, the exact defect M6 fixed, would have passed. Both now decode the MIME parts and compare. The harness is 18 checks.
+
+Two Lows are recorded and deliberately left open: captures are never pruned, and the failure path writes the exception message to the PHP error log. Details in `security-findings.md`.
+
+---
 
 The renderer is now wired — to one place, and that place sends nothing. `AdminController::previewPdf()` renders a single document to the administrator's browser behind a capability check and a per-document nonce. `WordPressLogoProvider` is constructed there with no arguments, so the logo is the site's current Custom Logo, read from a local file in uploads, with nothing to configure and nothing fetched. Details in `admin-preview-wiring.md`.
 

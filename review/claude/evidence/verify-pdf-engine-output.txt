@@ -87,11 +87,13 @@
 === E10 — glyph outlines are the original ones ===
   PASS  every subset outline is identical to the source font outline — 339 glyphs compared, including composites and their components
 
-=== E11 — delivery posture: the renderer is wired, nothing else is ===
+=== E11 — delivery posture: admin sandbox delivery only ===
   PASS  a PDF renderer is constructed in exactly one place — AdminController.php -> EmbeddedFontPdfRenderer
-  PASS  no plugin code path constructs a mailer — nothing wired
-  PASS  no plugin code path constructs the delivery use case — nothing wired
+  PASS  only the admin controller constructs the sandbox mailer — AdminController.php -> SandboxMailer
+  PASS  only the admin controller constructs the delivery use case — AdminController.php
   PASS  the renderer is constructed only inside the preview factory
+  PASS  sandbox delivery is registered on admin_post only and not on the order hook
+  PASS  sandbox delivery is explicitly local and has no transport call
   PASS  the preview is registered on admin_post only, never on an order hook
   PASS  the preview requires the capability and a nonce bound to the document
   PASS  the preview sends the document to the browser and nowhere else — no transport and no write in the controller
@@ -110,4 +112,4 @@
   PASS  issuing a legacy fiscal type is refused — invoice, proforma, receipt, credit_note, quote
   PASS  the refusal sits in the application service, not only in the order policy
 
-checks=85 pass=85 fail=0
+checks=87 pass=87 fail=0

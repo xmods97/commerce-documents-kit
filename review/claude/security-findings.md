@@ -275,6 +275,52 @@ Two notes on scope rather than findings:
 - **`RasterImage` is the only component in the renderer that parses attacker-influenceable binary data.** It accepts bytes, never a path or a URL, so it cannot be talked into opening the wrong thing; deciding what may be read is entirely the resolver's job. Its accepted-format list is short and closed, and an unrecognised signature is a rejection rather than a guess.
 - **PNG must be decoded, JPEG must not.** JPEG data goes into `/DCTDecode` untouched. PNG has to be inflated and unfiltered because transparency becomes a PDF soft mask — and the real GEWARD logo is an RGBA PNG, so a pass-through-only design would have refused the actual logo. The decoding is where a decompression bomb would live, which is why the inflated length is pinned rather than trusted.
 
+### Sandbox email capture (`320840c`) — independent review
+
+Reviewed as a checkpoint I did not write. Evidence: `evidence/verify-sandbox-admin-wiring-output.txt`, 18 checks, 18 pass, exit 0.
+
+**Verdict: the checkpoint holds. One Medium was found and fixed, two Lows are recorded, and two of the checkpoint's own ten checks did not verify what they claimed.**
+
+| Requirement | Finding |
+|---|---|
+| Capability and nonce | `sandboxEmail()` calls `self::authorize('commerce_documents_sandbox_email_' . $documentId)` first, which is `current_user_can('manage_woocommerce')` then `check_admin_referer` on a nonce bound to that document. The form carries `wp_nonce_field` for the same action. Correct. |
+| No real transport | No `wp_mail`, SMTP, socket, HTTP client or queue call exists in the controller or in `SandboxMailer`. `SandboxMailer` writes a file and nothing else. |
+| Not reachable from hooks or scheduler | Registered on `admin_post_*` only — no `admin_post_nopriv_*`, so an anonymous request cannot reach it. `Plugin.php` never mentions `sandboxEmail`; its only order hook is `observeOrderStatus`, which does not touch delivery. No `wp_schedule_*` anywhere. |
+| Recipient from the snapshot | Read from `$data['buyer']['email']` of the decrypted, integrity-checked snapshot; no `$_POST`/`$_GET` value reaches the recipient. An address failing `FILTER_VALIDATE_EMAIL` aborts **before** the PDF is rendered. |
+| PDF from the current engine | `self::pdfRenderer()` — the same single construction as the preview, so `EmbeddedFontPdfRenderer` with `WordPressLogoProvider`. The attachment decodes byte-for-byte to what the renderer returned. |
+| `.eml` written locally only | One `fopen(…, 'xb')` into the configured directory. See M-S1 below for *where* that directory may be. |
+| Traversal, symlink, collision | Filename is `document_id` validated against `^[A-Za-z0-9_-]+$`, plus a UTC timestamp and 6 random bytes. `fopen(…, 'xb')` fails rather than following a pre-created symlink or replacing an existing file, retried five times. |
+| MIME, attachment, multiline body | Decoded rather than pattern-matched: the text part base64-decodes to both of its lines with CRLF, the attachment decodes to exactly the rendered document, `Content-Disposition: attachment; filename="…"` uses the validated id, and `MIME-Version`, `From`, `To`, `Date`, `Message-ID` are all present. |
+| Audit event | `document.sandbox_stored`, deliberately distinct from `document.sent`, carried through the new `DeliverDocument` event-name parameter (default unchanged, so nothing else moves). The context holds `recipient_hash` and not the address — asserted. |
+| Secrets | Nothing new in Git or the database. The capture directory is a `wp-config` constant, not a credential; `*.eml` is git-ignored. |
+| PHP 7.4 | Clean. No `str_contains`, `match`, `?->`, attributes, promoted constructor properties or enums anywhere in `packages/`. |
+| Default sender | `sandbox@example.invalid`. `.invalid` is reserved by RFC 2606 and can never resolve, so even a capture that escaped into a real mail path could not be delivered. |
+
+#### M-S1 — a capture directory inside the web root was accepted — **FIXED**
+
+`AdminController::sandboxMailDirectory()` returns `COMMERCE_DOCUMENTS_SANDBOX_MAIL_DIR` verbatim, and `SandboxMailer` only checked that the directory existed and was writable. An operator pointing it at, say, `wp-content/uploads/sandbox-mail` would have every capture served over HTTP — and a capture holds the buyer's name, their email address and the entire rendered invoice.
+
+Demonstrated before the fix: a directory under a simulated `ABSPATH` was accepted, as was a path containing `..` that resolved back inside it.
+
+> **Fix.** `SandboxMailer::__construct()` now resolves the directory with `realpath()` before storing it — so `..` in the constant decides nothing at write time — and refuses any location at or inside `realpath(ABSPATH)`, with a message that says why. Outside a WordPress request `ABSPATH` is undefined and the guard stands aside, because nothing is being served. A deny file was considered and rejected: only some servers honour `.htaccess`, and refusing outright is the property worth having. Verified: inside the web root refused, the web root itself refused, traversal back inside refused, outside still accepted, no-WordPress context still accepted.
+
+#### L-S2 — captures are never cleaned up — **OPEN**
+
+Nothing prunes the directory. Each capture is a file holding personal data and a full PDF, and they accumulate for as long as the sandbox stage runs. Not fixed here: a retention rule that deletes evidence is a decision for whoever owns the sandbox stage, not a reviewer's to make silently. Worth setting before this runs for any length of time.
+
+#### L-S3 — the failure path writes to the PHP error log — **OPEN**
+
+`error_log('Commerce Documents sandbox delivery failed: ' . $error->getMessage())` can record the capture directory path. The message shown to the operator is generic, which is right; the log line is a minor internal-detail disclosure of the same kind as L2.
+
+#### The checkpoint's own checks: two of ten did not test their claims — **FIXED**
+
+- `pdf attachment is present` asserted only that the string `application/pdf` occurred in the file. A truncated or empty attachment would have passed.
+- `multiline body is preserved as MIME text` asserted only that a `Content-Transfer-Encoding: base64` header occurred. It never looked at the body, so a body that had been flattened to one line — the exact defect M6 fixed — would have passed.
+
+Both now split the message on its boundary and base64-decode the parts: the attachment must equal the rendered document byte for byte, and the text part must decode back to `"Line 1\r\nLine 2"`. Five further checks were added covering the recipient's provenance, the pre-render address validation, the audit context, and the three web-root cases. The harness is 18 checks, all passing.
+
+`sandbox-delivery-wiring.md` also reported `verify-pdf-engine.php` as 86/86; it is 87/87.
+
 ### Residual risk on the engine
 
 **No visual confirmation of the page was possible offline.** No PDF rasteriser exists on this machine (no Ghostscript, poppler, qpdf or mutool). The documents were opened in the local browser's PDF viewer, which loaded them and read the title from the info dictionary — that shows PDFium accepts the file, including one carrying an image XObject, not that the page looks right. One person should open `evidence/pdf-logo-with.pdf` once. Everything else is proven by reading the file back.
