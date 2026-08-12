@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Xmods\CommerceDocuments\Rendering;
 
+use Xmods\CommerceDocuments\Contracts\LogoProvider;
 use Xmods\CommerceDocuments\Contracts\PdfRenderer;
 use Xmods\CommerceDocuments\DocumentSnapshot;
 use Xmods\CommerceDocuments\Rendering\Font\EmbeddedFont;
+use Xmods\CommerceDocuments\Rendering\Image\RasterImage;
 use Xmods\CommerceDocuments\Rendering\Pdf\PageBuilder;
 use Xmods\CommerceDocuments\Rendering\Pdf\PdfDocumentWriter;
 
@@ -65,23 +67,32 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
     private const BODY_SIZE = 8.0;
     private const ROW_LEADING = 10.5;
 
+    /** The box the logo is fitted into, top right of the first page. */
+    private const LOGO_MAX_WIDTH = 150.0;
+    private const LOGO_MAX_HEIGHT = 46.0;
+    private const LOGO_RESOURCE = 'Im0';
+
     /** @var int */
     private $currencyExponent;
     /** @var EmbeddedFont */
     private $regular;
     /** @var EmbeddedFont */
     private $bold;
+    /** @var ?LogoProvider */
+    private $logoProvider;
 
     public function __construct(
         int $currencyExponent = 2,
         ?EmbeddedFont $regular = null,
-        ?EmbeddedFont $bold = null
+        ?EmbeddedFont $bold = null,
+        ?LogoProvider $logoProvider = null
     ) {
         $this->currencyExponent = ($currencyExponent >= 0 && $currencyExponent <= 6)
             ? $currencyExponent
             : 2;
         $this->regular = $regular ?? EmbeddedFont::regular();
         $this->bold = $bold ?? EmbeddedFont::bold();
+        $this->logoProvider = $logoProvider;
     }
 
     public function render(DocumentSnapshot $snapshot): string
@@ -91,9 +102,13 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
         $metadata = (array) ($data['metadata'] ?? []);
         $currency = self::field((string) $data['currency']);
 
+        // A provider that cannot produce a safe image returns null, and the
+        // document is issued without a logo rather than not issued at all.
+        $logo = $this->logoProvider === null ? null : $this->logoProvider->logo();
+
         $page = new PageBuilder($this->regular, $this->bold);
 
-        $this->heading($page, $data, $labels, $metadata);
+        $this->heading($page, $data, $labels, $metadata, $logo);
         $this->parties($page, $data, $labels);
         $this->items($page, $data, $labels, $currency);
         $this->totals($page, $data, $labels, $currency);
@@ -101,7 +116,7 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
         $this->corrections($page, $labels, $metadata);
         $this->footers($page, $data, $labels);
 
-        return $this->assemble($page, $data);
+        return $this->assemble($page, $data, $logo);
     }
 
     /**
@@ -109,8 +124,29 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
      * @param array<string, string> $labels
      * @param array<string, mixed> $metadata
      */
-    private function heading(PageBuilder $page, array $data, array $labels, array $metadata): void
-    {
+    private function heading(
+        PageBuilder $page,
+        array $data,
+        array $labels,
+        array $metadata,
+        ?RasterImage $logo = null
+    ): void {
+        $logoBottom = null;
+        if ($logo !== null) {
+            // Fitted into a fixed box, aspect ratio preserved, anchored to the
+            // right margin so it cannot grow into the heading text whatever the
+            // uploaded image's proportions are.
+            $scale = min(
+                self::LOGO_MAX_WIDTH / $logo->width(),
+                self::LOGO_MAX_HEIGHT / $logo->height()
+            );
+            $width = $logo->width() * $scale;
+            $height = $logo->height() * $scale;
+            $logoTop = $page->y() + 6.0;
+            $page->image(self::LOGO_RESOURCE, PageBuilder::RIGHT - $width, $logoTop - $height, $width, $height);
+            $logoBottom = $logoTop - $height;
+        }
+
         $title = strtoupper(str_replace('_', ' ', (string) $data['document_type']));
         $page->line(PageBuilder::MARGIN, $title, 15.0, true, 20.0);
         $page->line(PageBuilder::MARGIN, self::field((string) $data['document_number']), 11.0, true, 18.0);
@@ -140,6 +176,11 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
             $page->box(PageBuilder::MARGIN, $top - 18.0, PageBuilder::RIGHT - PageBuilder::MARGIN, 20.0);
             $page->text(PageBuilder::MARGIN + 8.0, $top - 12.0, $labels['unpaid_cod'], 10.0, true);
             $page->moveTo($top - 24.0);
+        }
+
+        // Whatever the heading text did, the next block starts below the logo.
+        if ($logoBottom !== null && $logoBottom - 12.0 < $page->y()) {
+            $page->moveTo($logoBottom - 12.0);
         }
         $page->advance(10.0);
     }
@@ -402,7 +443,7 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
     }
 
     /** @param array<string, mixed> $data */
-    private function assemble(PageBuilder $page, array $data): string
+    private function assemble(PageBuilder $page, array $data, ?RasterImage $logo = null): string
     {
         $writer = new PdfDocumentWriter();
 
@@ -411,7 +452,12 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
         $regularFont = $this->fontObjects($writer, $this->regular);
         $boldFont = $this->fontObjects($writer, $this->bold);
 
-        $resources = '<< /Font << /F1 ' . $regularFont . ' 0 R /F2 ' . $boldFont . ' 0 R >> >>';
+        $resources = '<< /Font << /F1 ' . $regularFont . ' 0 R /F2 ' . $boldFont . ' 0 R >>';
+        if ($logo !== null) {
+            $resources .= ' /XObject << /' . self::LOGO_RESOURCE . ' '
+                . $this->imageObject($writer, $logo) . ' 0 R >>';
+        }
+        $resources .= ' >>';
 
         $pageObjects = [];
         foreach ($page->pages() as $content) {
@@ -449,6 +495,40 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
         );
 
         return $writer->build($catalog, $info);
+    }
+
+    /**
+     * Writes the logo as an image XObject and returns its object number.
+     *
+     * The image is a passive resource: pixel data, dimensions and a colour space,
+     * with an optional greyscale soft mask for transparency. It carries no
+     * action, no annotation and no reference to anything outside the file — the
+     * whole dictionary is written here, from values RasterImage has already
+     * validated, rather than copied from the source file.
+     */
+    private function imageObject(PdfDocumentWriter $writer, RasterImage $logo): int
+    {
+        $softMask = '';
+        if ($logo->softMask() !== null) {
+            $mask = $writer->addStream(
+                '/Type /XObject /Subtype /Image'
+                . ' /Width ' . $logo->width() . ' /Height ' . $logo->height()
+                . ' /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode',
+                (string) $logo->softMask()
+            );
+            $softMask = ' /SMask ' . $mask . ' 0 R';
+        }
+
+        return $writer->addStream(
+            '/Type /XObject /Subtype /Image'
+            . ' /Width ' . $logo->width() . ' /Height ' . $logo->height()
+            . ' /ColorSpace ' . $logo->colourSpace()
+            . ' /BitsPerComponent ' . $logo->bitsPerComponent()
+            . ' /Filter ' . $logo->filter()
+            . ($logo->decodeParms() === '' ? '' : ' /DecodeParms ' . $logo->decodeParms())
+            . $softMask,
+            $logo->data()
+        );
     }
 
     /** Returns the object number of the Type0 font. */

@@ -1,0 +1,76 @@
+﻿
+=== L1 — the image parser accepts only what it can embed safely ===
+  PASS  the real GEWARD logo is accepted — 600x249, /DeviceRGB, alpha=no, 38446 B embedded
+  PASS  transparency becomes a soft mask, not a white box — 600x249, 2731 B embedded
+  PASS  an opaque PNG is accepted and carries no soft mask — 480x200 /DeviceRGB
+  PASS  a baseline JPEG is accepted and passed through as DCTDecode — 520x210 /DeviceRGB
+  PASS  the parser refuses SVG — Image is neither PNG nor JPEG.
+  PASS  the parser refuses SVG renamed to .png — Image is neither PNG nor JPEG.
+  PASS  the parser refuses PHP renamed to .png — Image is neither PNG nor JPEG.
+  PASS  the parser refuses empty input — Image is empty.
+  PASS  the parser refuses a data URL — Image is neither PNG nor JPEG.
+  PASS  the parser refuses an http URL — Image is neither PNG nor JPEG.
+  PASS  the parser refuses oversized input — Image exceeds the maximum accepted size.
+  PASS  the parser refuses a decompression bomb — PNG image data does not match its declared dimensions.
+  PASS  the parser refuses too many pixels — Image has more pixels than the renderer accepts.
+  PASS  the parser refuses a truncated PNG
+  PASS  the parser refuses a PNG whose chunk checksum does not match
+
+=== L2 — the resolver reads only a local file inside uploads ===
+  PASS  no Custom Logo means no logo and no error — No Custom Logo is set.
+  PASS  a valid local PNG inside uploads is accepted
+  PASS  a valid local JPEG inside uploads is accepted
+  PASS  the resolver refuses an SVG attachment — Custom Logo is not a PNG or JPEG attachment.
+  PASS  the resolver refuses an SVG renamed to .png — The logo file content is not a PNG or JPEG (image/svg+xml).
+  PASS  the resolver refuses PHP renamed to .png — The logo file content is not a PNG or JPEG (text/x-php).
+  PASS  the resolver refuses a .php file — The logo file does not have a PNG or JPEG extension.
+  PASS  the resolver refuses a remote http URL — The logo path is a URL, which is never fetched.
+  PASS  the resolver refuses a protocol-relative URL — The logo file does not exist.
+  PASS  the resolver refuses a data URL — The logo path is a URL, which is never fetched.
+  PASS  the resolver refuses a php:// stream wrapper — The logo path is a URL, which is never fetched.
+  PASS  the resolver refuses a file:// URL — The logo path is a URL, which is never fetched.
+  PASS  the resolver refuses path traversal out of uploads — The logo file does not exist.
+  PASS  the resolver refuses traversal to wp-config.php — The logo file does not exist.
+  PASS  the resolver refuses an absolute path outside uploads — The logo file is outside the uploads directory.
+  PASS  the resolver refuses a NUL byte in the path — The logo path is empty or contains a NUL byte.
+  PASS  the resolver refuses a file that does not exist — The logo file does not exist.
+  PASS  the resolver refuses a file larger than the cap — The logo file is larger than the accepted maximum.
+  PASS  the resolver refuses an image with too many pixels — The logo image is larger than the renderer accepts.
+  PASS  the resolver refuses a decompression bomb — PNG image data does not match its declared dimensions.
+  PASS  a wide enough size variant is preferred over the original
+  PASS  a size variant whose filename contains a path is ignored, not resolved — fell back to the original: 600px
+
+=== L3 — the logo in the PDF ===
+  PASS  the document with a logo declares exactly one image resource
+  PASS  the image is placed in the content stream
+  PASS  the image declares dimensions and a colour space
+  PASS  transparency travels as a soft mask alongside the image — image plus soft mask
+  PASS  the soft mask is an 8-bit greyscale image of the same size
+  PASS  the transparent document is structurally valid
+  PASS  the logo document is still structurally valid
+  PASS  the logo document still has no active content
+  PASS  the logo document references nothing remote
+  PASS  the document text is unchanged by the logo
+  PASS  the table still starts below the logo, not behind it
+  PASS  a hostile filename still resolves to a plain image
+  PASS  the filename never reaches the document
+  PASS  a document built from a hostile filename is still valid and inert
+
+=== L4 — the fallback without a logo ===
+  PASS  a null logo produces no XObject at all
+  PASS  no logo provider at all behaves the same
+  PASS  the document without a logo is structurally valid
+  PASS  the document without a logo carries the same text
+  PASS  a provider that throws is not able to stop a document being issued
+  PASS  rendering with a logo stays deterministic — sha256 eab1f1147b064a87
+  PASS  the logo adds a bounded amount to the document — 38 KB added
+
+=== L5 — the embedded pixels are the source pixels ===
+  PASS  the colour stream inflates to exactly three bytes per pixel — 448200 bytes for 600x249
+  PASS  every sampled pixel of the embedded logo matches the source image — 1980 pixels compared, 0 mismatched
+  PASS  the soft mask inflates to exactly one byte per pixel — 149400 bytes
+  PASS  the mask is not uniform — real transparency survived
+  PASS  every sampled pixel and alpha value of the transparent logo matches its source — 1980 pixels compared, 0 mismatched
+  PASS  the embedded images were written back out for visual inspection — pdf-logo-extracted.png 42441 B, pdf-logo-extracted-transparent.png 2435 B
+
+checks=64 pass=64 fail=0

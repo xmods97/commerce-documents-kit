@@ -235,6 +235,52 @@ checks=73 pass=73 fail=0
 | `evidence/pdf-engine-paginated.pdf` | 140 items across 6 pages |
 | `evidence/pdf-engine-hostile.pdf` | The injection fixture |
 
-## 7. Environment note (not a product finding)
+## 7. Logo pass — verification run
+
+### PHP lint
+
+```
+php -l over every *.php outside vendor/
+checked=100  failed=0
+```
+
+### Focused runtime checks
+
+`review/claude/verify-logo-security.php` — **64 checks, 64 pass, 0 fail, exit 0**. Full output: `evidence/verify-logo-security-output.txt`.
+
+The harness builds a throwaway uploads directory under the system temp path, points a fake media library at it, and drives the real `WordPressLogoProvider` and `RasterImage` through it. It was run with a copy of the site's actual logo:
+
+```
+php review/claude/verify-logo-security.php "<…>/uploads/2023/04/Logo-600x249.png"
+checks=64 pass=64 fail=0
+```
+
+| Group | Checks | Result |
+|---|---|---|
+| L1 — the image parser | 14 | pass (real GEWARD logo 600×249 accepted; RGBA transparency becomes a soft mask; opaque PNG carries none; baseline JPEG passed through as `/DCTDecode`; refused: SVG, SVG renamed to `.png`, PHP renamed to `.png`, empty input, a data URL, an http URL, oversized input, a decompression bomb, a 2600×2600 image, a truncated PNG, a PNG with a broken chunk CRC) |
+| L2 — the resolver | 21 | pass (no Custom Logo → no logo, no error; valid local PNG and JPEG accepted; refused: SVG attachment, disguised SVG, disguised PHP, `.php` file, `https://`, `//host/`, `data:`, `php://`, `file://`, traversal out of uploads, traversal at `wp-config.php`, absolute path outside uploads, NUL byte in the path, missing file, oversized file, oversized image, decompression bomb; a wide enough size variant is preferred; a variant filename containing a path is skipped, not resolved) |
+| L3 — the logo in the PDF | 13 | pass (one image resource declared and placed; dimensions and colour space correct; transparency travels as an 8-bit greyscale `/SMask`; document structurally valid; no active content; nothing remote; document text unchanged; table starts below the logo; a hostile filename embeds normally and never appears in the output) |
+| L4 — the fallback | 7 | pass (null logo → no `/XObject` at all; identical to rendering with no provider; still valid; same text; rendering stays deterministic; the logo adds 38 KB) |
+| L5 — the embedded pixels | 6 | pass (colour stream inflates to exactly 3 bytes per pixel, mask to exactly 1; the mask is not uniform; **1 980 sampled pixels match the source exactly, for both an opaque and a transparent logo**; both images written back out for inspection) |
+
+### What was checked visually
+
+This is the part the previous pass could not do at all, and it is now partly possible — for the image, not for the page.
+
+- **Looked at:** `evidence/pdf-logo-extracted.png`, which is the image **taken back out of the finished PDF** by inflating its XObject stream and rewrapping it as a PNG. It shows the GEWARD wordmark, navy on white, correct proportions, no distortion, no colour shift, no channel swap. That confirms the whole path — resolver, parser, XObject, colour space — end to end.
+- **Also confirmed:** both `evidence/pdf-logo-with.pdf` and `evidence/pdf-logo-without.pdf` load in the local browser's PDF viewer, which reads `ORDER_CONFIRMATION/2026/000042` from the info dictionary. PDFium therefore accepts a document carrying an image XObject.
+- **Not looked at:** the rendered page. There is still no PDF rasteriser offline, so nobody has seen the logo *in position* on the invoice. Its placement is verified numerically — a fixed 150×46 pt box, right-aligned to the margin, aspect ratio preserved, with the following block pushed below the logo's lower edge — and the recovered page text confirms the table header and parties are still where they belong. A human opening `evidence/pdf-logo-with.pdf` remains the outstanding check.
+- **Noticed while looking:** the site's media library holds two logo families. `Logo-*.png` is navy on light; `Logo-2-*.png` is white on dark. The renderer embeds whichever is set as the Custom Logo. Both were rendered; the light-background variant is the one that belongs on a white invoice.
+
+### PHPUnit — still not run
+
+`vendor/` remains absent. `tests/unit/LogoEmbeddingTest.php` (14 test methods, one of them an 11-case data provider) is written and lint-clean but **not executed**. The equivalent assertions run in `verify-logo-security.php`, which does execute. The fixture builder the test relies on — a PNG constructed without ext-gd — was exercised directly and produced images that `RasterImage`, `getimagesize` and `finfo` all accept, with the RGBA variant yielding a soft mask as the test expects. The JPEG test skips itself when ext-gd is absent.
+
+### Two notes on the sandbox, not on the product
+
+- Windows will not create a filename containing `"`, `<` or `>`, so the hostile-filename fixture uses `logo';DROP TABLE wp_posts;--script.png`. The property under test — that no filename reaches the document — is unaffected.
+- The sandbox is created under the system temp directory and removed at the end of the run, deliberately away from the OneDrive-backed working copy, whose ACL behaviour caused a spurious failure in an earlier pass.
+
+## 8. Environment note (not a product finding)
 
 On the second harness run, `SandboxMailer::__construct()` threw `Sandbox mail directory is not writable` for a directory it had itself created on the previous run. This is a Windows/OneDrive ACL artifact of the review sandbox, not a defect in the mailer; the harness was changed to use a unique directory per run and the check then passed. I mention it only so the log is not misread.

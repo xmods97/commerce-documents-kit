@@ -17,7 +17,8 @@ Severity key: **Critical** = data loss or unusable system / **High** = blocks ex
 
 Verification: `review/claude/verify-fixes.php` — 59 checks, 59 pass, exit 0 (`evidence/verify-fixes-output.txt`).
 `review/claude/verify-pdf-engine.php` — 73 checks, 73 pass, exit 0 (`evidence/verify-pdf-engine-output.txt`).
-PHP lint clean on 92 files.
+`review/claude/verify-logo-security.php` — 64 checks, 64 pass, exit 0 (`evidence/verify-logo-security-output.txt`).
+PHP lint clean on 100 files.
 
 **The PDF engine blocker is closed.** A production engine was selected, built and reviewed — see *Production PDF engine* below and `pdf-engine-decision.md`. Delivery remains unwired by design; that is the separate sandbox stage, not a blocker.
 
@@ -248,11 +249,40 @@ Subsetting renumbers glyph ids, which means rewriting the component indices insi
 
 The harness therefore compares each of the 339 subset glyphs against the same glyph in the source DejaVu Sans: simple outlines byte for byte, composites everywhere except the indices, whose targets are then compared the same way, recursively. **All 339 match.** The outlines in the document are DejaVu's own.
 
+### Logo embedding — reviewed separately
+
+The first engine pass had **no image code at all**, and that was one of the reasons it was easy to defend. Adding the site logo reopens that surface deliberately, so it gets its own review. Evidence: `evidence/verify-logo-security-output.txt`, 64 checks, 64 pass, exit 0.
+
+The property being defended: **the logo is a local file inside the WordPress uploads directory, and nothing else is ever opened.** WordPress is asked which attachment is the Custom Logo; its answer is then treated as untrusted input.
+
+| Requirement | Finding | How it was verified |
+|---|---|---|
+| Only a local file from uploads | `WordPressLogoProvider` resolves the candidate with `realpath()` and requires the result to sit under `realpath(uploads)`. Because `realpath()` collapses `..` and follows symlinks first, containment is decided on the file's real location, not on how the path was spelled. | Refused: traversal out of uploads, traversal aimed at `wp-config.php`, an absolute path outside uploads, and a size-variant filename containing `../../`. |
+| No remote fetch, ever | A candidate containing a scheme is rejected before the filesystem is touched. There is no HTTP client, no `wp_remote_*`, no URL-returning media function; `get_attached_file()` returns a path. | Refused: `https://`, `//host/`, `data:`, `php://`, `file://`. |
+| PNG/JPEG only, SVG refused | The attachment MIME must be `image/png` or `image/jpeg`; the extension must match; `finfo` and `getimagesize` must both agree; and `RasterImage` re-derives the format from the signature. There is no SVG code path to reach. | Refused: an SVG attachment, an SVG renamed to `.png`, PHP renamed to `.png`, a `.php` file. |
+| MIME checked by content, not by name | `finfo` on the bytes and `getimagesize` on the file must return the same type, and it must be PNG or JPEG. | An SVG named `.png` is refused as `image/svg+xml` even though its extension is allowed. |
+| Bounded size | 2 MB on the file, 5 000 px per side, 4 MP in total, and the inflated PNG data is pinned to exactly the size its header declares. | Refused: an oversized file, a 2600×2600 image, and a PNG whose 10×10 header hides 5 MB of inflated data. |
+| No path traversal, no arbitrary file read | Only the *basename* is taken from the size metadata; the directory always comes from the attachment's own path. The path checks above then apply to the result. | A size variant declaring `../../private/secret-logo.png` is skipped and the original is used instead. |
+| No active content in the output | The image dictionary is written by the renderer from values `RasterImage` has already validated, not copied from the file. Ancillary PNG chunks — colour profiles, text, timestamps — are not read at all. | The document with a logo contains no `/JavaScript`, `/JS`, `/OpenAction`, `/AA`, `/Launch`, `/URI`, `/EmbeddedFile`, `/RichMedia`, and no `http(s)://`. |
+| Hostile filenames cannot reach the document | Filenames are never written into the PDF. | A file named `logo';DROP TABLE wp_posts;--script.png` embeds normally and neither the name nor any fragment of it appears in the output. |
+| Correct fallback | Every failure path returns null and the document is issued without a logo. Nothing in the logo path can throw into the renderer. | A document with no logo is byte-identical to one rendered with no provider at all, contains no `/XObject`, and is structurally valid. |
+| Determinism preserved | Same snapshot and same logo file produce byte-identical output. | Asserted across separate renderer instances. |
+| The right pixels | Not a security property, but the one a reader cares about: the image in the document is the image on disk. | The colour and mask streams are inflated back out of the finished PDF and compared with what GD reads from the source: 1 980 sampled pixels, 0 mismatches, for both an opaque and a transparent logo. |
+
+Two notes on scope rather than findings:
+
+- **`RasterImage` is the only component in the renderer that parses attacker-influenceable binary data.** It accepts bytes, never a path or a URL, so it cannot be talked into opening the wrong thing; deciding what may be read is entirely the resolver's job. Its accepted-format list is short and closed, and an unrecognised signature is a rejection rather than a guess.
+- **PNG must be decoded, JPEG must not.** JPEG data goes into `/DCTDecode` untouched. PNG has to be inflated and unfiltered because transparency becomes a PDF soft mask — and the real GEWARD logo is an RGBA PNG, so a pass-through-only design would have refused the actual logo. The decoding is where a decompression bomb would live, which is why the inflated length is pinned rather than trusted.
+
 ### Residual risk on the engine
 
-**No visual confirmation was possible offline.** No PDF rasteriser exists on this machine (no Ghostscript, poppler, qpdf or mutool). The document was opened in the local browser's PDF viewer, which loaded it and read the title from its info dictionary — that shows PDFium accepts the file, not that the page looks right. One person should open `evidence/pdf-engine-standard.pdf` once. Everything else about the engine is proven by reading the file back.
+**No visual confirmation of the page was possible offline.** No PDF rasteriser exists on this machine (no Ghostscript, poppler, qpdf or mutool). The documents were opened in the local browser's PDF viewer, which loaded them and read the title from the info dictionary — that shows PDFium accepts the file, including one carrying an image XObject, not that the page looks right. One person should open `evidence/pdf-logo-with.pdf` once. Everything else is proven by reading the file back.
 
-Also outstanding, and deliberately not attempted: no logo, and no layout fidelity against the Fakturownia reference. A logo means an image XObject, which reopens a surface this engine currently does not have, and that should be an explicit decision rather than a side effect.
+The **logo itself has been looked at**: it is extracted from the finished PDF into `evidence/pdf-logo-extracted.png` and is the GEWARD wordmark, navy on white, undistorted.
+
+**Which logo the site is set to is worth an operator's attention.** The media library holds two families — `Logo-*.png` is navy on light, `Logo-2-*.png` is white on dark. Whichever attachment is the Custom Logo is embedded faithfully; if that is the inverted variant, a white invoice will carry a dark block. That is correct behaviour with the wrong asset, and it is a site setting, not a code change.
+
+Still outstanding: no layout fidelity against the Fakturownia reference.
 
 ---
 

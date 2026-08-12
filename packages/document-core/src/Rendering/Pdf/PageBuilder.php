@@ -150,6 +150,22 @@ final class PageBuilder
             . self::number($to) . ' ' . self::number($y) . " l\nS\n0 G\n";
     }
 
+    /**
+     * Places an image XObject. The name is a fixed internal identifier chosen by
+     * the renderer, never anything derived from a filename or from document
+     * content, so nothing here can name an object that does not exist.
+     */
+    public function image(string $name, float $x, float $y, float $width, float $height): void
+    {
+        if (!preg_match('/^Im[0-9]+$/', $name)) {
+            throw new RuntimeException('Invalid image resource name.');
+        }
+        $this->pages[$this->current] .= "q\n"
+            . self::number($width) . ' 0 0 ' . self::number($height) . ' '
+            . self::number($x) . ' ' . self::number($y) . " cm\n"
+            . '/' . $name . " Do\nQ\n";
+    }
+
     public function box(float $x, float $y, float $width, float $height, float $gray = 0.4): void
     {
         $this->pages[$this->current] .= self::number($gray) . " G\n0.8 w\n"

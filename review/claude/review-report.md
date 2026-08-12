@@ -17,7 +17,7 @@ Constraints observed: no change to the main Geward repository, no branch or work
 | Medium | 10 | 9 | 1 (M9) | – |
 | Low | 6 | 4 | – | 2 (L2, L6) |
 
-PHP lint: 92 files, 0 errors. Focused runtime checks: 59/59 (fix pass) and 73/73 (engine pass), both exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
+PHP lint: 100 files, 0 errors. Focused runtime checks: 59/59 (fix pass), 73/73 (engine pass) and 64/64 (logo pass), all exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
 
 **The blocker recorded in the previous pass — the production PDF engine — is now closed.** The decision, the alternatives and the security review are in `pdf-engine-decision.md`; the summary is at the end of this document.
 
@@ -113,20 +113,36 @@ That split is also the security story. There is no URL handling, no image loader
 
 **The check I would want someone else to look at.** Renumbering glyph ids rewrites the component indices inside composite glyphs, and every Polish diacritic is a composite. A mistake there puts the wrong accent on the wrong letter while every structural check still passes, and only a human looking at the page would notice. So the harness compares all 339 subset glyphs against the source font — simple outlines byte for byte, composites everywhere except the indices, then recursing into what those indices point at. All 339 match.
 
-**What is still open on the engine:** no PDF rasteriser exists offline, so nobody has *seen* a page. The browser's PDF viewer loaded the file and read its title, which shows PDFium accepts it; everything else is proven by reading the file back. One person opening `evidence/pdf-engine-standard.pdf` closes it. There is also no logo and no layout match against the Fakturownia reference — a logo means an image XObject, which reopens a surface this engine does not currently have, and that should be a deliberate decision.
+### The logo, added afterwards
+
+The engine shipped without one on purpose, because an image XObject reopens a surface the engine did not otherwise have. That decision was then taken deliberately rather than skipped.
+
+The rule is narrow: **the logo is a local file inside the WordPress uploads directory, resolved through the site's Custom Logo setting, and nothing else is ever opened.** WordPress is asked which attachment it is; the answer is then treated as untrusted. The path must carry no scheme and no NUL byte, must resolve through `realpath()` to somewhere under `realpath(uploads)` — so containment is decided on where the file really is, not on how the path was written — must have a PNG or JPEG extension, must be inside the size cap, and must satisfy `finfo` and `getimagesize` before a byte goes further. Only then is it parsed, by a class that accepts bytes and cannot open anything at all.
+
+Every failure returns null. A missing, oversized, wrong-format or hostile logo produces a document without a logo, never a document that failed to render.
+
+Two things are worth knowing about the implementation. **JPEG is passed through untouched** into `/DCTDecode`; the markers are read only to learn the size and to refuse progressive, arithmetic and CMYK variants. **PNG has to be decoded**, because transparency must become a PDF soft mask and the real GEWARD logo is an RGBA PNG — a pass-through-only design would have refused the actual logo. Decoding is where a decompression bomb would live, so the inflated length is pinned to exactly what the header declares rather than trusted.
+
+**The logo has actually been looked at.** The image is extracted back out of the finished PDF — inflating its XObject stream and rewrapping it as a PNG — and it is the GEWARD wordmark, navy on white, undistorted. Separately, 1 980 sampled pixels of the embedded image match what GD reads from the source file exactly, for both an opaque and a transparent logo.
+
+**What is still open:** no PDF rasteriser exists offline, so nobody has seen a *page*. The browser's PDF viewer loads both evidence documents and reads their titles, which shows PDFium accepts a file carrying an image XObject; everything else is proven by reading the file back. One person opening `evidence/pdf-logo-with.pdf` closes it. There is still no layout match against the Fakturownia reference.
+
+**One thing for the site owner rather than for the code:** the media library holds two logo families — `Logo-*.png` is navy on light, `Logo-2-*.png` is white on dark. Whichever attachment is set as the Custom Logo is embedded faithfully, so if that is the inverted variant a white invoice will carry a dark block. Correct behaviour, wrong asset; worth checking on the live site before the first document goes out.
 
 ---
 
 ## Current delivery posture
 
-`SandboxMailer`, `BasicPdfRenderer`, `EmbeddedFontPdfRenderer` and `DeliverDocument` are still referenced only from tests and from the verification harnesses. No plugin code path constructs a Mailer or a PdfRenderer — that is now asserted automatically rather than checked by hand — and no transport call exists in any of them. **Nothing can send anything today.** With the engine decided, the remaining gate is the end-to-end sandbox stage and its separate approval; `SandboxMailer` was deliberately left unwired.
+`SandboxMailer`, `BasicPdfRenderer`, `EmbeddedFontPdfRenderer`, `WordPressLogoProvider` and `DeliverDocument` are still referenced only from tests and from the verification harnesses. No plugin code path constructs a Mailer or a PdfRenderer — that is asserted automatically rather than checked by hand — and no transport call exists in any of them. **Nothing can send anything today.** With the engine decided and the logo built, the remaining gate is the end-to-end sandbox stage and its separate approval; `SandboxMailer` was deliberately left unwired.
+
+The logo provider is unwired for the same reason: nothing constructs a renderer yet, so there is nowhere to attach it. When the renderer is wired in the sandbox stage, `new EmbeddedFontPdfRenderer(2, null, null, new WordPressLogoProvider())` is the entire change, and the logo is then automatic with no configuration — the provider reads the site's Custom Logo by itself.
 
 ---
 
 ## Limitations
 
-- **PHPUnit was not executed.** New and updated tests are written and lint-clean but unrun; I make no claim about the suite's pass/fail state. The equivalent assertions were exercised through `verify-fixes.php` (59/59) and `verify-pdf-engine.php` (73/73), both of which do run.
-- **No page has been looked at.** The PDF engine is verified by reading its output back, not by rasterising it — no PDF renderer is available offline. See the engine section above.
+- **PHPUnit was not executed.** New and updated tests are written and lint-clean but unrun; I make no claim about the suite's pass/fail state. The equivalent assertions were exercised through `verify-fixes.php` (59/59), `verify-pdf-engine.php` (73/73) and `verify-logo-security.php` (64/64), all of which do run.
+- **No page has been looked at.** The PDF engine is verified by reading its output back, not by rasterising it — no PDF renderer is available offline. The embedded logo *image* has been looked at directly; the page it sits on has not. See the engine section above.
 - **No WordPress runtime was involved.** wpdb, dbDelta, HPOS declaration and the admin screens are verified by code reading and by a format-applying wpdb stand-in, not against a live WordPress. The C1 fix in particular should be confirmed once against a real wpdb — it is a five-minute check.
 - **The new schema (version 4) has not been applied anywhere.** Adding `chain_position` over existing global-chain rows is the risky step; `preflight()` is designed to block it, but that blocking path has not been exercised against real data.
 - **File permissions could not be verified on this machine** — PHP's `chmod()` on Windows only toggles the read-only bit. The 0600 mode is asserted as a call, not as an observed result.

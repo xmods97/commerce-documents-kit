@@ -9,6 +9,8 @@ Evidence: `evidence/verify-pdf-engine-output.txt`
 
 Implemented as `Xmods\CommerceDocuments\Rendering\EmbeddedFontPdfRenderer` behind the existing `PdfRenderer` interface. 73 checks pass, exit 0.
 
+A later pass added the site logo — see *The logo* below. 64 further checks pass, exit 0 (`evidence/verify-logo-security-output.txt`).
+
 ---
 
 ## What was actually available
@@ -100,11 +102,33 @@ So the harness compares each of the 339 glyphs in the embedded subset against th
 
 ---
 
+## The logo — added in a later pass
+
+The first pass left the logo out on purpose: an image XObject reopens a surface the engine did not otherwise have, and that deserved its own decision. It has now been made.
+
+**The logo is a local file from the WordPress uploads directory, resolved through the Custom Logo setting, and nothing else.** It is never fetched. `WordPressLogoProvider` asks WordPress for the Custom Logo attachment, then treats the answer as untrusted: the path must contain no scheme and no NUL byte, must resolve through `realpath()` to somewhere inside `realpath(uploads)`, must carry a PNG or JPEG extension, must be within the size cap, and must satisfy both `finfo` and `getimagesize` before a byte is handed on. Only then does `RasterImage` parse it — a parser that takes bytes and cannot open anything at all.
+
+| Piece | File | Role |
+|---|---|---|
+| Renderer-side contract | `document-core/src/Contracts/LogoProvider.php` | Returns validated image bytes or null. The renderer never resolves anything itself. |
+| Image parser | `document-core/src/Rendering/Image/RasterImage.php` | 8-bit PNG (grey, RGB, indexed, either with alpha) and baseline JPEG. Everything else is refused with a reason. |
+| WordPress lookup | `wordpress/src/Contracts/MediaLibrary.php`, `NativeMediaLibrary.php` | The five WordPress calls the resolver needs, each guarded by `function_exists`. |
+| Resolver | `wordpress/src/WordPressLogoProvider.php` | Every security decision. Returns null on any failure. |
+
+Two design points worth stating:
+
+- **JPEG is passed through, PNG is decoded.** `/DCTDecode` takes JPEG data as it stands, so the markers are walked only to learn the dimensions and to refuse progressive, arithmetic and CMYK variants. PNG has to be decoded because transparency must become a PDF soft mask, and the real GEWARD logo is an RGBA PNG — a pass-through-only implementation would have refused the actual logo. The inflated size is pinned to exactly what the header declares, so a decompression bomb inflates to its declared size and stops.
+- **A size variant is preferred over the original.** The uploaded logo is 3705×1536; decoding that on every invoice would be wasteful, and it exceeds the pixel cap anyway. The resolver picks the narrowest generated variant at least 480 px wide, taking only the *basename* from the metadata and the directory from the attachment's own path.
+
+Failure is always "no logo": a missing, unreadable, oversized, wrong-format or hostile file produces a document without a logo rather than no document.
+
 ## What this does not settle
 
-- **No visual confirmation.** No PDF rasteriser is available offline (no Ghostscript, poppler, qpdf or mutool on this machine). The document was opened in the local browser's PDF viewer, which loaded it and read its title from the info dictionary — that shows PDFium accepts the file, not that the page looks right. Everything else is proven by reading the file back; **one human should still open `evidence/pdf-engine-standard.pdf` and look at it.** That is a two-minute check and it is the only open item on the engine itself.
-- **No logo and no layout fidelity against the Fakturownia reference.** The layout is clean and complete, not a visual match. Adding a logo means an image XObject, which is a new decision with its own surface, and it should be taken deliberately rather than folded into this one.
-- **Delivery is still not wired.** Nothing in the plugin constructs a renderer or a mailer. That remains correct until the end-to-end sandbox stage is approved separately.
+- **No visual confirmation of the page.** No PDF rasteriser is available offline (no Ghostscript, poppler, qpdf or mutool on this machine). Both evidence documents were opened in the local browser's PDF viewer, which loaded them and read the title from the info dictionary — that shows PDFium accepts a document with an image XObject, not that the page looks right. **One human should open `evidence/pdf-logo-with.pdf` and look at it.**
+  The logo itself *has* been looked at: the image is extracted back out of the finished PDF into `evidence/pdf-logo-extracted.png`, and it is the GEWARD wordmark, navy on white, undistorted.
+- **Which logo the site is set to is an operational question, not a code one.** The media library holds two families: `Logo-*.png` is navy on a light background, `Logo-2-*.png` is the inverted white-on-dark version. The renderer embeds whichever attachment is set as the Custom Logo, faithfully. If that is the inverted one, a white invoice will carry a dark block — correct behaviour, wrong asset. Worth checking on the live site before the first document goes out.
+- **No layout fidelity against the Fakturownia reference.** The layout is clean and complete, not a visual match.
+- **Delivery is still not wired**, and neither is the logo provider. Nothing in the plugin constructs a renderer, so there is nowhere to attach it yet; when the renderer is wired in the sandbox stage, `new EmbeddedFontPdfRenderer(2, null, null, new WordPressLogoProvider())` is the whole change, and the logo is then automatic with no configuration.
 
 ## If this turns out to be the wrong call
 
