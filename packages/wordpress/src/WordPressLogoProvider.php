@@ -41,6 +41,12 @@ final class WordPressLogoProvider implements LogoProvider
     /** Variants narrower than this are too coarse for a printed header. */
     private const PREFERRED_MIN_WIDTH = 480;
 
+    /**
+     * How far a size variant's proportions may differ from the original's before
+     * it is treated as a crop rather than a scaled copy.
+     */
+    private const ASPECT_TOLERANCE = 0.01;
+
     private const ALLOWED_MIME = ['image/png', 'image/jpeg'];
     private const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg'];
 
@@ -132,9 +138,17 @@ final class WordPressLogoProvider implements LogoProvider
     }
 
     /**
-     * Candidate paths, best first: a size variant wide enough to print, then the
-     * original. Only the file *name* is taken from the metadata — the directory
-     * always comes from the attachment's own path.
+     * Candidate paths, best first: a proportional size variant wide enough to
+     * print, then the original. Only the file *name* is taken from the metadata —
+     * the directory always comes from the attachment's own path.
+     *
+     * The aspect ratio check is the important part. WordPress generates two kinds
+     * of size variant from one upload: scaled copies, which keep the proportions,
+     * and **hard crops** such as `thumbnail` or the theme's own sizes, which do
+     * not. A cropped variant of a logo is a piece of a logo — for the GEWARD
+     * lockup that would mean the emblem without the wordmark, or the reverse.
+     * Anything whose proportions do not match the original within a percent is
+     * therefore skipped, and the full-size original is used instead.
      *
      * @return string[]
      */
@@ -144,20 +158,34 @@ final class WordPressLogoProvider implements LogoProvider
         $sizes = [];
 
         $metadata = $this->media->metadataOf($attachmentId);
+        $originalWidth = (int) ($metadata['width'] ?? 0);
+        $originalHeight = (int) ($metadata['height'] ?? 0);
+        // Without the original proportions there is nothing to compare a variant
+        // against, so no variant is trusted and the original is used as it is.
+        $ratio = ($originalWidth > 0 && $originalHeight > 0)
+            ? $originalWidth / $originalHeight
+            : null;
+
         foreach ((array) ($metadata['sizes'] ?? []) as $size) {
-            if (!is_array($size)) {
+            if (!is_array($size) || $ratio === null) {
                 continue;
             }
             $file = (string) ($size['file'] ?? '');
             $width = (int) ($size['width'] ?? 0);
+            $height = (int) ($size['height'] ?? 0);
             $mime = strtolower((string) ($size['mime-type'] ?? ''));
             // basename() alone would already defeat a traversal attempt; the
             // equality check makes a rejected attempt visible instead of quietly
             // rewriting it into something that looks legitimate.
-            if ($file === '' || basename($file) !== $file || $width < 1) {
+            if ($file === '' || basename($file) !== $file || $width < 1 || $height < 1) {
                 continue;
             }
             if ($mime !== '' && !in_array($mime, self::ALLOWED_MIME, true)) {
+                continue;
+            }
+            // A percent of tolerance absorbs WordPress's rounding when it scales;
+            // a crop misses by far more than that.
+            if (abs(($width / $height) - $ratio) > $ratio * self::ASPECT_TOLERANCE) {
                 continue;
             }
             $sizes[] = ['file' => $file, 'width' => $width];

@@ -37,8 +37,15 @@
   PASS  the resolver refuses a file larger than the cap — The logo file is larger than the accepted maximum.
   PASS  the resolver refuses an image with too many pixels — The logo image is larger than the renderer accepts.
   PASS  the resolver refuses a decompression bomb — PNG image data does not match its declared dimensions.
-  PASS  a wide enough size variant is preferred over the original
+  PASS  a wide enough proportional size variant is preferred over the original
   PASS  a size variant whose filename contains a path is ignored, not resolved — fell back to the original: 600px
+
+=== L2b — the whole logo, never a crop of it ===
+  PASS  a logo with generated crops still yields the whole logo — 480x199, ratio 2.412 against the original 2.414
+  PASS  the square crop — the emblem without the wordmark — is never chosen
+  PASS  a scaled variant is preferred over the full-size original — 480x199
+  PASS  when every variant is a crop, the original is used instead — 1200x497
+  PASS  with no recorded dimensions no variant is trusted and the original is used — 1200x497
 
 === L3 — the logo in the PDF ===
   PASS  the document with a logo declares exactly one image resource
@@ -73,4 +80,4 @@
   PASS  every sampled pixel and alpha value of the transparent logo matches its source — 1980 pixels compared, 0 mismatched
   PASS  the embedded images were written back out for visual inspection — pdf-logo-extracted.png 42441 B, pdf-logo-extracted-transparent.png 2435 B
 
-checks=64 pass=64 fail=0
+checks=69 pass=69 fail=0

@@ -17,7 +17,7 @@ Constraints observed: no change to the main Geward repository, no branch or work
 | Medium | 10 | 9 | 1 (M9) | – |
 | Low | 6 | 4 | – | 2 (L2, L6) |
 
-PHP lint: 100 files, 0 errors. Focused runtime checks: 59/59 (fix pass), 73/73 (engine pass) and 64/64 (logo pass), all exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
+PHP lint: 100 files, 0 errors. Focused runtime checks: 59/59 (fix pass), 73/73 (engine pass) and 69/69 (logo pass), all exit 0. PHPUnit not executed — `vendor/` is absent and installing it requires network access.
 
 **The blocker recorded in the previous pass — the production PDF engine — is now closed.** The decision, the alternatives and the security review are in `pdf-engine-decision.md`; the summary is at the end of this document.
 
@@ -123,11 +123,15 @@ Every failure returns null. A missing, oversized, wrong-format or hostile logo p
 
 Two things are worth knowing about the implementation. **JPEG is passed through untouched** into `/DCTDecode`; the markers are read only to learn the size and to refuse progressive, arithmetic and CMYK variants. **PNG has to be decoded**, because transparency must become a PDF soft mask and the real GEWARD logo is an RGBA PNG — a pass-through-only design would have refused the actual logo. Decoding is where a decompression bomb would live, so the inflated length is pinned to exactly what the header declares rather than trusted.
 
-**The logo has actually been looked at.** The image is extracted back out of the finished PDF — inflating its XObject stream and rewrapping it as a PNG — and it is the GEWARD wordmark, navy on white, undistorted. Separately, 1 980 sampled pixels of the embedded image match what GD reads from the source file exactly, for both an opaque and a transparent logo.
+**The whole logo, never a piece of it.** WordPress generates two kinds of size variant from one upload — scaled copies and hard crops — and the real GEWARD attachment set contains both. Preferring "the narrowest variant at least 480 px wide" could therefore have selected a crop, which for a lockup means the emblem with the wordmark cut off. A variant is now used only when its proportions match the original within one percent; otherwise the full-size original is. That was a real defect, found by looking at the extracted image rather than by any structural check.
+
+**The logo has actually been looked at.** The image is extracted back out of the finished PDF — inflating its XObject stream and rewrapping it as a PNG — and matches its source exactly, undistorted. Separately, 1 980 sampled pixels of the embedded image match what GD reads from the source file, for both an opaque and a transparent logo.
+
+**The evidence shows an old logo, and it cannot show the current one.** Nothing about the logo is hardcoded: whatever attachment is set as the site's Custom Logo is what gets embedded, so a document generated on the site carries the current lockup. But the only logo files available offline come from a 2023 backup taken before the branding changed — the bare navy wordmark, no emblem. The current asset lives in the live media library, and fetching it would be precisely the external request this design refuses to make. Point the harness at a copy of the current file to see it in a document.
 
 **What is still open:** no PDF rasteriser exists offline, so nobody has seen a *page*. The browser's PDF viewer loads both evidence documents and reads their titles, which shows PDFium accepts a file carrying an image XObject; everything else is proven by reading the file back. One person opening `evidence/pdf-logo-with.pdf` closes it. There is still no layout match against the Fakturownia reference.
 
-**One thing for the site owner rather than for the code:** the media library holds two logo families — `Logo-*.png` is navy on light, `Logo-2-*.png` is white on dark. Whichever attachment is set as the Custom Logo is embedded faithfully, so if that is the inverted variant a white invoice will carry a dark block. Correct behaviour, wrong asset; worth checking on the live site before the first document goes out.
+**Two things for the site owner rather than for the code.** If the Custom Logo is an **SVG**, no logo appears: SVG is refused deliberately at two levels, and the answer is to set a PNG as the Custom Logo, not to loosen the parser. And the library holds a navy-on-light and an inverted white-on-dark family — whichever is set is embedded faithfully, so the inverted one would put a dark block on a white invoice. Both are worth checking on the live site before the first document goes out.
 
 ---
 
@@ -141,7 +145,7 @@ The logo provider is unwired for the same reason: nothing constructs a renderer 
 
 ## Limitations
 
-- **PHPUnit was not executed.** New and updated tests are written and lint-clean but unrun; I make no claim about the suite's pass/fail state. The equivalent assertions were exercised through `verify-fixes.php` (59/59), `verify-pdf-engine.php` (73/73) and `verify-logo-security.php` (64/64), all of which do run.
+- **PHPUnit was not executed.** New and updated tests are written and lint-clean but unrun; I make no claim about the suite's pass/fail state. The equivalent assertions were exercised through `verify-fixes.php` (59/59), `verify-pdf-engine.php` (73/73) and `verify-logo-security.php` (69/69), all of which do run.
 - **No page has been looked at.** The PDF engine is verified by reading its output back, not by rasterising it — no PDF renderer is available offline. The embedded logo *image* has been looked at directly; the page it sits on has not. See the engine section above.
 - **No WordPress runtime was involved.** wpdb, dbDelta, HPOS declaration and the admin screens are verified by code reading and by a format-applying wpdb stand-in, not against a live WordPress. The C1 fix in particular should be confirmed once against a real wpdb — it is a five-minute check.
 - **The new schema (version 4) has not been applied anywhere.** Adding `chain_position` over existing global-chain rows is the risky step; `preflight()` is designed to block it, but that blocking path has not been exercised against real data.

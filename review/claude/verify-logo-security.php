@@ -422,18 +422,18 @@ foreach ($cases as $label => $case) {
 $media->attachmentId = 1;
 $media->mime = 'image/png';
 $media->path = $uploads . DIRECTORY_SEPARATOR . 'logo-600x249.png';
-$media->metadata = ['sizes' => [
-    'thumbnail' => ['file' => 'logo-opaque.png', 'width' => 480, 'height' => 200, 'mime-type' => 'image/png'],
+$media->metadata = ['width' => 600, 'height' => 249, 'sizes' => [
+    'medium' => ['file' => 'logo-opaque.png', 'width' => 480, 'height' => 200, 'mime-type' => 'image/png'],
 ]];
 $variant = $provider->logo();
-check('a wide enough size variant is preferred over the original',
+check('a wide enough proportional size variant is preferred over the original',
     $variant !== null && $variant->width() === 480, $provider->lastRejection());
 
-$media->metadata = ['sizes' => [
+$media->metadata = ['width' => 600, 'height' => 249, 'sizes' => [
     'evil' => [
         'file' => '../../private/secret-logo.png',
         'width' => 600,
-        'height' => 200,
+        'height' => 249,
         'mime-type' => 'image/png',
     ],
 ]];
@@ -441,6 +441,82 @@ $traversalVariant = $provider->logo();
 check('a size variant whose filename contains a path is ignored, not resolved',
     $traversalVariant !== null && $traversalVariant->width() !== 200,
     'fell back to the original: ' . ($traversalVariant === null ? 'null' : $traversalVariant->width() . 'px'));
+$media->metadata = [];
+
+section('L2b — the whole logo, never a crop of it');
+
+// WordPress generates two kinds of size variant from one upload: scaled copies,
+// which keep the proportions, and hard crops, which do not. The names and shapes
+// below are taken from the real GEWARD attachment set.
+$lockupDirectory = $uploads . DIRECTORY_SEPARATOR . 'lockup';
+mkdir($lockupDirectory, 0700, true);
+
+$variants = [
+    'Logo.png' => [1200, 497],          // the original: emblem plus wordmark
+    'Logo-480x199.png' => [480, 199],   // scaled
+    'Logo-600x249.png' => [600, 249],   // scaled
+    'Logo-1024x424.png' => [1024, 424], // scaled
+    'Logo-400x250.png' => [400, 250],   // hard crop
+    'Logo-480x480.png' => [480, 480],   // hard crop, square: emblem only
+    'Logo-1080x675.png' => [1080, 675], // hard crop
+    'Logo-510x382.png' => [510, 382],   // hard crop
+];
+foreach ($variants as $name => $dimensions) {
+    file_put_contents(
+        $lockupDirectory . DIRECTORY_SEPARATOR . $name,
+        makeRgbPng($dimensions[0], $dimensions[1])
+    );
+}
+
+$sizesMetadata = [];
+foreach ($variants as $name => $dimensions) {
+    if ($name === 'Logo.png') {
+        continue;
+    }
+    $sizesMetadata[str_replace('.png', '', $name)] = [
+        'file' => $name,
+        'width' => $dimensions[0],
+        'height' => $dimensions[1],
+        'mime-type' => 'image/png',
+    ];
+}
+
+$media->attachmentId = 1;
+$media->mime = 'image/png';
+$media->path = $lockupDirectory . DIRECTORY_SEPARATOR . 'Logo.png';
+$media->metadata = ['width' => 1200, 'height' => 497, 'sizes' => $sizesMetadata];
+
+$chosen = $provider->logo();
+$originalRatio = 1200 / 497;
+check('a logo with generated crops still yields the whole logo',
+    $chosen !== null && abs(($chosen->width() / $chosen->height()) - $originalRatio) <= $originalRatio * 0.01,
+    $chosen === null
+        ? $provider->lastRejection()
+        : sprintf('%dx%d, ratio %.3f against the original %.3f',
+            $chosen->width(), $chosen->height(), $chosen->width() / $chosen->height(), $originalRatio));
+check('the square crop — the emblem without the wordmark — is never chosen',
+    $chosen !== null && !($chosen->width() === 480 && $chosen->height() === 480));
+check('a scaled variant is preferred over the full-size original',
+    $chosen !== null && $chosen->width() === 480 && $chosen->height() === 199,
+    $chosen === null ? 'none' : $chosen->width() . 'x' . $chosen->height());
+
+// Only crops on offer: the original must be used rather than any of them.
+$media->metadata = ['width' => 1200, 'height' => 497, 'sizes' => [
+    'square' => ['file' => 'Logo-480x480.png', 'width' => 480, 'height' => 480, 'mime-type' => 'image/png'],
+    'wide crop' => ['file' => 'Logo-1080x675.png', 'width' => 1080, 'height' => 675, 'mime-type' => 'image/png'],
+]];
+$cropsOnly = $provider->logo();
+check('when every variant is a crop, the original is used instead',
+    $cropsOnly !== null && $cropsOnly->width() === 1200 && $cropsOnly->height() === 497,
+    $cropsOnly === null ? $provider->lastRejection() : $cropsOnly->width() . 'x' . $cropsOnly->height());
+
+// Without the original's proportions there is nothing to compare against.
+$media->metadata = ['sizes' => $sizesMetadata];
+$noDimensions = $provider->logo();
+check('with no recorded dimensions no variant is trusted and the original is used',
+    $noDimensions !== null && $noDimensions->width() === 1200,
+    $noDimensions === null ? $provider->lastRejection() : $noDimensions->width() . 'x' . $noDimensions->height());
+
 $media->metadata = [];
 
 section('L3 — the logo in the PDF');

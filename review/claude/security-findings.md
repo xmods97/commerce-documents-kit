@@ -17,7 +17,7 @@ Severity key: **Critical** = data loss or unusable system / **High** = blocks ex
 
 Verification: `review/claude/verify-fixes.php` — 59 checks, 59 pass, exit 0 (`evidence/verify-fixes-output.txt`).
 `review/claude/verify-pdf-engine.php` — 73 checks, 73 pass, exit 0 (`evidence/verify-pdf-engine-output.txt`).
-`review/claude/verify-logo-security.php` — 64 checks, 64 pass, exit 0 (`evidence/verify-logo-security-output.txt`).
+`review/claude/verify-logo-security.php` — 69 checks, 69 pass, exit 0 (`evidence/verify-logo-security-output.txt`).
 PHP lint clean on 100 files.
 
 **The PDF engine blocker is closed.** A production engine was selected, built and reviewed — see *Production PDF engine* below and `pdf-engine-decision.md`. Delivery remains unwired by design; that is the separate sandbox stage, not a blocker.
@@ -251,7 +251,7 @@ The harness therefore compares each of the 339 subset glyphs against the same gl
 
 ### Logo embedding — reviewed separately
 
-The first engine pass had **no image code at all**, and that was one of the reasons it was easy to defend. Adding the site logo reopens that surface deliberately, so it gets its own review. Evidence: `evidence/verify-logo-security-output.txt`, 64 checks, 64 pass, exit 0.
+The first engine pass had **no image code at all**, and that was one of the reasons it was easy to defend. Adding the site logo reopens that surface deliberately, so it gets its own review. Evidence: `evidence/verify-logo-security-output.txt`, 69 checks, 69 pass, exit 0.
 
 The property being defended: **the logo is a local file inside the WordPress uploads directory, and nothing else is ever opened.** WordPress is asked which attachment is the Custom Logo; its answer is then treated as untrusted input.
 
@@ -263,6 +263,7 @@ The property being defended: **the logo is a local file inside the WordPress upl
 | MIME checked by content, not by name | `finfo` on the bytes and `getimagesize` on the file must return the same type, and it must be PNG or JPEG. | An SVG named `.png` is refused as `image/svg+xml` even though its extension is allowed. |
 | Bounded size | 2 MB on the file, 5 000 px per side, 4 MP in total, and the inflated PNG data is pinned to exactly the size its header declares. | Refused: an oversized file, a 2600×2600 image, and a PNG whose 10×10 header hides 5 MB of inflated data. |
 | No path traversal, no arbitrary file read | Only the *basename* is taken from the size metadata; the directory always comes from the attachment's own path. The path checks above then apply to the result. | A size variant declaring `../../private/secret-logo.png` is skipped and the original is used instead. |
+| The whole logo, not a piece of one | WordPress generates scaled copies **and** hard crops from one upload. A variant whose proportions differ from the original's by more than 1% is treated as a crop and skipped; if none qualifies, the full-size original is used; with no recorded original dimensions, no variant is trusted. | Against the real attachment shapes: the 480×480 square crop — the emblem with the wordmark cut off — is never chosen, the scaled 480×199 is, and a crops-only set falls back to the 1200×497 original. |
 | No active content in the output | The image dictionary is written by the renderer from values `RasterImage` has already validated, not copied from the file. Ancillary PNG chunks — colour profiles, text, timestamps — are not read at all. | The document with a logo contains no `/JavaScript`, `/JS`, `/OpenAction`, `/AA`, `/Launch`, `/URI`, `/EmbeddedFile`, `/RichMedia`, and no `http(s)://`. |
 | Hostile filenames cannot reach the document | Filenames are never written into the PDF. | A file named `logo';DROP TABLE wp_posts;--script.png` embeds normally and neither the name nor any fragment of it appears in the output. |
 | Correct fallback | Every failure path returns null and the document is issued without a logo. Nothing in the logo path can throw into the renderer. | A document with no logo is byte-identical to one rendered with no provider at all, contains no `/XObject`, and is structurally valid. |
@@ -278,9 +279,11 @@ Two notes on scope rather than findings:
 
 **No visual confirmation of the page was possible offline.** No PDF rasteriser exists on this machine (no Ghostscript, poppler, qpdf or mutool). The documents were opened in the local browser's PDF viewer, which loaded them and read the title from the info dictionary — that shows PDFium accepts the file, including one carrying an image XObject, not that the page looks right. One person should open `evidence/pdf-logo-with.pdf` once. Everything else is proven by reading the file back.
 
-The **logo itself has been looked at**: it is extracted from the finished PDF into `evidence/pdf-logo-extracted.png` and is the GEWARD wordmark, navy on white, undistorted.
+The **embedded image has been looked at**: it is extracted from the finished PDF into `evidence/pdf-logo-extracted.png` and matches its source exactly, undistorted.
 
-**Which logo the site is set to is worth an operator's attention.** The media library holds two families — `Logo-*.png` is navy on light, `Logo-2-*.png` is white on dark. Whichever attachment is the Custom Logo is embedded faithfully; if that is the inverted variant, a white invoice will carry a dark block. That is correct behaviour with the wrong asset, and it is a site setting, not a code change.
+**The evidence shows an outdated logo, and that is a limit of the offline material, not of the code.** Nothing is hardcoded — the provider embeds whatever attachment is set as the site's Custom Logo, so the current lockup is what a document generated on the site will carry. The only logo files available offline come from a 2023 backup taken before the branding changed; they are the older navy wordmark with no emblem. Fetching the current asset would require an external request, which is exactly what this design refuses to do. Run the harness against a copy of the current logo file to see it in a document.
+
+**Two things worth an operator's attention.** If the site's Custom Logo is an **SVG**, no logo will appear: SVG is refused deliberately, at two levels, and loosening that is not the right fix — setting a PNG as the Custom Logo is. And the library holds a navy-on-light and an inverted white-on-dark family; whichever is set is embedded faithfully, so the inverted one would put a dark block on a white invoice.
 
 Still outstanding: no layout fidelity against the Fakturownia reference.
 

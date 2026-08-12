@@ -157,17 +157,86 @@ final class LogoEmbeddingTest extends TestCase
         ];
     }
 
+    /**
+     * WordPress generates both scaled copies and hard crops from one upload. A
+     * crop of a logo is a piece of a logo — for a lockup that means the emblem
+     * without the wordmark — so only variants that keep the original proportions
+     * may be used.
+     */
+    public function testACroppedSizeVariantIsNeverChosenOverTheWholeLogo(): void
+    {
+        $original = $this->write('Logo.png', self::png(1200, 497));
+        $this->write('Logo-480x199.png', self::png(480, 199));   // scaled
+        $this->write('Logo-480x480.png', self::png(480, 480));   // hard crop: emblem only
+        $this->write('Logo-1080x675.png', self::png(1080, 675)); // hard crop
+
+        $media = $this->media($original);
+        $media->metadata = [
+            'width' => 1200,
+            'height' => 497,
+            'sizes' => [
+                'scaled' => ['file' => 'Logo-480x199.png', 'width' => 480, 'height' => 199, 'mime-type' => 'image/png'],
+                'square' => ['file' => 'Logo-480x480.png', 'width' => 480, 'height' => 480, 'mime-type' => 'image/png'],
+                'wide' => ['file' => 'Logo-1080x675.png', 'width' => 1080, 'height' => 675, 'mime-type' => 'image/png'],
+            ],
+        ];
+
+        $logo = (new WordPressLogoProvider($media))->logo();
+
+        self::assertInstanceOf(RasterImage::class, $logo);
+        self::assertSame(480, $logo->width());
+        self::assertSame(199, $logo->height());
+        self::assertEqualsWithDelta(1200 / 497, $logo->width() / $logo->height(), 0.03);
+    }
+
+    public function testWhenEveryVariantIsACropTheOriginalIsUsed(): void
+    {
+        $original = $this->write('Logo.png', self::png(1200, 497));
+        $this->write('Logo-480x480.png', self::png(480, 480));
+
+        $media = $this->media($original);
+        $media->metadata = [
+            'width' => 1200,
+            'height' => 497,
+            'sizes' => [
+                'square' => ['file' => 'Logo-480x480.png', 'width' => 480, 'height' => 480, 'mime-type' => 'image/png'],
+            ],
+        ];
+
+        $logo = (new WordPressLogoProvider($media))->logo();
+
+        self::assertInstanceOf(RasterImage::class, $logo);
+        self::assertSame(1200, $logo->width());
+        self::assertSame(497, $logo->height());
+    }
+
+    public function testWithoutRecordedDimensionsNoVariantIsTrusted(): void
+    {
+        $original = $this->write('Logo.png', self::png(600, 249));
+        $this->write('Logo-480x199.png', self::png(480, 199));
+
+        $media = $this->media($original);
+        $media->metadata = ['sizes' => [
+            'scaled' => ['file' => 'Logo-480x199.png', 'width' => 480, 'height' => 199, 'mime-type' => 'image/png'],
+        ]];
+
+        $logo = (new WordPressLogoProvider($media))->logo();
+
+        self::assertInstanceOf(RasterImage::class, $logo);
+        self::assertSame(600, $logo->width());
+    }
+
     public function testASizeVariantFilenameCannotCarryAPath(): void
     {
         $original = $this->write('logo.png', self::png(600, 100));
         file_put_contents($this->outside . DIRECTORY_SEPARATOR . 'secret.png', self::png(40, 40));
 
         $media = $this->media($original);
-        $media->metadata = ['sizes' => [
+        $media->metadata = ['width' => 600, 'height' => 100, 'sizes' => [
             'evil' => [
                 'file' => '../../private/secret.png',
                 'width' => 600,
-                'height' => 40,
+                'height' => 100,
                 'mime-type' => 'image/png',
             ],
         ]];
