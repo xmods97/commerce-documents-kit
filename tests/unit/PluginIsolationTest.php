@@ -68,7 +68,12 @@ final class PluginIsolationTest extends TestCase
             "add_action('admin_post_commerce_documents_preview_pdf', [self::class, 'previewPdf'])",
             $controller
         );
+        self::assertStringContainsString(
+            "add_action('admin_post_commerce_documents_sandbox_email', [self::class, 'sandboxEmail'])",
+            $controller
+        );
         self::assertStringNotContainsString('previewPdf', $plugin);
+        self::assertStringNotContainsString('sandboxEmail', $plugin);
 
         // Capability, then a nonce bound to the requested document.
         self::assertMatchesRegularExpression(
@@ -87,15 +92,30 @@ final class PluginIsolationTest extends TestCase
         );
     }
 
-    public function testNoPluginCodeConstructsAMailerOrTheDeliveryUseCase(): void
+    public function testOnlyTheExplicitAdminSandboxActionConstructsLocalDelivery(): void
     {
-        foreach (glob(dirname(__DIR__, 2) . '/packages/*/src/*.php') ?: [] as $path) {
-            $source = (string) file_get_contents($path);
-            self::assertDoesNotMatchRegularExpression(
-                '/new\s+(SandboxMailer|DeliverDocument)\s*\(/',
-                $source,
-                basename($path) . ' must not wire delivery'
-            );
-        }
+        $root = dirname(__DIR__, 2);
+        $controller = (string) file_get_contents($root . '/packages/woocommerce/src/AdminController.php');
+        $plugin = (string) file_get_contents($root . '/packages/woocommerce/src/Plugin.php');
+        self::assertSame(1, substr_count($controller, 'new SandboxMailer('));
+        self::assertSame(1, substr_count($controller, 'new DeliverDocument('));
+        self::assertStringNotContainsString('new SandboxMailer(', $plugin);
+        self::assertStringNotContainsString('new DeliverDocument(', $plugin);
+        self::assertStringContainsString("'document.sandbox_stored'", $controller);
+        self::assertStringNotContainsString('wp_mail(', $controller);
+    }
+
+    public function testSandboxDeliveryIsLocalAndUsesNoTransport(): void
+    {
+        $controller = (string) file_get_contents(
+            dirname(__DIR__, 2) . '/packages/woocommerce/src/AdminController.php'
+        );
+        self::assertStringContainsString("new SandboxMailer(self::sandboxMailDirectory(), 'sandbox@example.invalid')", $controller);
+        self::assertStringContainsString("'document.sandbox_stored'", $controller);
+        self::assertStringContainsString('COMMERCE_DOCUMENTS_SANDBOX_MAIL_DIR', $controller);
+        self::assertDoesNotMatchRegularExpression(
+            '/\b(wp_mail|fsockopen|curl_\w+|wp_remote_\w+|wp_schedule_)\w*\s*\(/',
+            $controller
+        );
     }
 }

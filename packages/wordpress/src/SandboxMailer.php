@@ -22,7 +22,7 @@ final class SandboxMailer implements Mailer
     /** @var string */
     private $from;
 
-    public function __construct(string $directory, string $from = 'sandbox@localhost')
+    public function __construct(string $directory, string $from = 'sandbox@example.invalid')
     {
         if (self::hasHeaderBreak($from) || filter_var(self::addressOf($from), FILTER_VALIDATE_EMAIL) === false) {
             throw new InvalidArgumentException('Sandbox sender address is invalid.');

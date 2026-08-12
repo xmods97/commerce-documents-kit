@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Xmods\CommerceDocuments\WooCommerce;
 
 use Throwable;
+use Xmods\CommerceDocuments\Application\DeliverDocument;
 use Xmods\CommerceDocuments\DocumentStatus;
 use Xmods\CommerceDocuments\DocumentSnapshot;
 use Xmods\CommerceDocuments\DocumentType;
@@ -17,6 +18,7 @@ use Xmods\CommerceDocuments\WordPress\OpenSslAesGcmCipher;
 use Xmods\CommerceDocuments\WordPress\WpdbDocumentRepository;
 use Xmods\CommerceDocuments\WordPress\WpdbEventLogger;
 use Xmods\CommerceDocuments\WordPress\WpdbNumberGenerator;
+use Xmods\CommerceDocuments\WordPress\SandboxMailer;
 use Xmods\CommerceDocuments\Rendering\EmbeddedFontPdfRenderer;
 use Xmods\CommerceDocuments\Rendering\HtmlRenderer;
 use Xmods\CommerceDocuments\Rendering\TemplateCatalog;
@@ -33,6 +35,7 @@ final class AdminController
         // Preview only: an administrator asking to see one document. It is not
         // reachable from any order hook, and there is no delivery path behind it.
         add_action('admin_post_commerce_documents_preview_pdf', [self::class, 'previewPdf']);
+        add_action('admin_post_commerce_documents_sandbox_email', [self::class, 'sandboxEmail']);
         add_action('admin_post_commerce_documents_migrate', [self::class, 'migrate']);
         add_action('admin_post_commerce_documents_correct', [self::class, 'correct']);
     }
@@ -98,7 +101,7 @@ final class AdminController
 
         echo '<div class="wrap"><h1>Commerce Documents</h1>';
         self::notice();
-        echo '<p><strong>Test mode:</strong> documents are stored locally. No email, PDF or KSeF submission is performed.</p>';
+        echo '<p><strong>Test mode:</strong> documents and sandbox PDF/.eml captures stay local. No external email or KSeF submission is performed.</p>';
         echo '<form method="post" action="options.php">';
         settings_fields('commerce_documents');
         echo '<h2>Seller</h2><fieldset><label><input type="radio" name="commerce_documents_wc_settings[seller_source]" value="woocommerce" '
@@ -212,6 +215,11 @@ final class AdminController
                     . esc_url($url) . '">View / print</a>';
                 if ($document['readable']) {
                     echo ' <a class="button" target="_blank" href="' . esc_url($pdfUrl) . '">Preview PDF</a>';
+                    echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:inline-block;margin-left:6px">'
+                        . '<input type="hidden" name="action" value="commerce_documents_sandbox_email">'
+                        . '<input type="hidden" name="document_id" value="' . esc_attr($document['document_id']) . '">'
+                        . wp_nonce_field('commerce_documents_sandbox_email_' . $document['document_id'], '_wpnonce', true, false)
+                        . '<button class="button" type="submit">Create sandbox email</button></form>';
                 }
                 if ($supersededBy === '' && $document['readable']) {
                     // The token is minted once per rendered form, so a resubmitted or
@@ -342,6 +350,65 @@ final class AdminController
         header('X-Content-Type-Options: nosniff');
         echo $pdf;
         exit;
+    }
+
+    /**
+     * Creates a local .eml capture for an administrator. This never calls a
+     * transport and intentionally uses a distinct audit event from a real send.
+     */
+    public static function sandboxEmail(): void
+    {
+        $documentId = isset($_POST['document_id'])
+            ? sanitize_text_field(wp_unslash($_POST['document_id']))
+            : '';
+        self::authorize('commerce_documents_sandbox_email_' . $documentId);
+
+        $snapshot = self::find($documentId);
+        if ($snapshot === null) {
+            self::redirect('failed', 'Document not found.');
+        }
+        $data = $snapshot->toArray();
+        $recipient = trim((string) (($data['buyer']['email'] ?? '')));
+        if (filter_var($recipient, FILTER_VALIDATE_EMAIL) === false) {
+            self::redirect('failed', 'The document buyer has no valid email address.');
+        }
+
+        global $wpdb;
+        try {
+            $delivery = new DeliverDocument(
+                self::pdfRenderer(),
+                new SandboxMailer(self::sandboxMailDirectory(), 'sandbox@example.invalid'),
+                new WpdbEventLogger(
+                    $wpdb,
+                    $wpdb->prefix . 'commerce_document_events',
+                    ConfigKeyProvider::auditKey()
+                ),
+                'document.sandbox_stored'
+            );
+            $number = (string) ($data['document_number'] ?? $documentId);
+            $delivery->execute(
+                $snapshot,
+                $recipient,
+                'Sandbox preview: ' . $number,
+                "Local sandbox capture for document {$number}.\nNo email transport was used."
+            );
+            self::redirect('sandbox_sent', 'Local sandbox .eml created; no email was sent.');
+        } catch (Throwable $error) {
+            error_log('Commerce Documents sandbox delivery failed: ' . $error->getMessage());
+            self::redirect('failed', 'Sandbox email could not be created.');
+        }
+    }
+
+    private static function sandboxMailDirectory(): string
+    {
+        if (defined('COMMERCE_DOCUMENTS_SANDBOX_MAIL_DIR')) {
+            $directory = constant('COMMERCE_DOCUMENTS_SANDBOX_MAIL_DIR');
+            if (is_string($directory) && trim($directory) !== '') {
+                return $directory;
+            }
+        }
+        return rtrim(sys_get_temp_dir(), "\\/")
+            . DIRECTORY_SEPARATOR . 'commerce-documents-sandbox-mail';
     }
 
     /**
@@ -631,6 +698,8 @@ final class AdminController
         $result = isset($_GET['cdk_result']) ? sanitize_key((string) $_GET['cdk_result']) : '';
         if ($result === 'generated') {
             echo '<div class="notice notice-success"><p>Document generated or already existed.</p></div>';
+        } elseif ($result === 'sandbox_sent') {
+            echo '<div class="notice notice-success"><p>Local sandbox .eml created. No email was sent.</p></div>';
         } elseif ($result !== '') {
             $message = isset($_GET['cdk_message']) ? sanitize_text_field(wp_unslash($_GET['cdk_message'])) : '';
             echo '<div class="notice notice-error"><p>' . esc_html($message !== '' ? $message : 'Operation failed.') . '</p></div>';

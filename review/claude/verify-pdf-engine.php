@@ -868,12 +868,12 @@ if ($sourceFile === '' || !is_file($sourceFile)) {
             : implode('; ', array_slice($problems, 0, 5)));
 }
 
-section('E11 — delivery posture: the renderer is wired, nothing else is');
+section('E11 — delivery posture: admin sandbox delivery only');
 
 // The renderer is now reachable from the admin preview. That is a deliberate
 // change and it narrows, rather than removes, the invariant: exactly one place
-// may construct a renderer, no place may construct a mailer, and no order hook
-// may reach either.
+// may construct a renderer, and exactly one explicit admin place may construct
+// the local SandboxMailer/DeliverDocument pair. No order hook may reach either.
 $rendererWiring = [];
 $mailerWiring = [];
 $deliveryWiring = [];
@@ -893,9 +893,11 @@ foreach (glob($root . '/packages/*/src/*.php') as $path) {
 check('a PDF renderer is constructed in exactly one place',
     $rendererWiring === ['AdminController.php -> EmbeddedFontPdfRenderer'],
     $rendererWiring === [] ? 'nothing wired' : implode(', ', $rendererWiring));
-check('no plugin code path constructs a mailer', $mailerWiring === [],
+check('only the admin controller constructs the sandbox mailer',
+    $mailerWiring === ['AdminController.php -> SandboxMailer'],
     $mailerWiring === [] ? 'nothing wired' : implode(', ', $mailerWiring));
-check('no plugin code path constructs the delivery use case', $deliveryWiring === [],
+check('only the admin controller constructs the delivery use case',
+    $deliveryWiring === ['AdminController.php'],
     $deliveryWiring === [] ? 'nothing wired' : implode(', ', $deliveryWiring));
 
 $controller = (string) file_get_contents($root . '/packages/woocommerce/src/AdminController.php');
@@ -904,6 +906,14 @@ $plugin = (string) file_get_contents($root . '/packages/woocommerce/src/Plugin.p
 check('the renderer is constructed only inside the preview factory',
     substr_count($controller, 'new EmbeddedFontPdfRenderer(') === 1
     && (bool) preg_match('/private static function pdfRenderer\(\).*?new EmbeddedFontPdfRenderer\(/s', $controller));
+check('sandbox delivery is registered on admin_post only and not on the order hook',
+    strpos($controller, "add_action('admin_post_commerce_documents_sandbox_email'") !== false
+    && strpos($plugin, 'sandboxEmail') === false
+    && preg_match('/add_action\(\s*[\'\"]woocommerce_[^\'\"]*[\'\"]\s*,\s*\[self::class, [\'\"]sandboxEmail/', $controller) === 0);
+check('sandbox delivery is explicitly local and has no transport call',
+    strpos($controller, "new SandboxMailer(self::sandboxMailDirectory(), 'sandbox@example.invalid')") !== false
+    && strpos($controller, "'document.sandbox_stored'") !== false
+    && preg_match('/\b(wp_mail|mail|fsockopen|curl_\w+|wp_remote_\w+)\s*\(/', $controller) === 0);
 check('the preview is registered on admin_post only, never on an order hook',
     strpos($controller, "add_action('admin_post_commerce_documents_preview_pdf'") !== false
     && preg_match('/add_action\(\s*[\'"]woocommerce_[^\'"]*[\'"]\s*,\s*\[self::class, [\'"]previewPdf/', $controller) === 0

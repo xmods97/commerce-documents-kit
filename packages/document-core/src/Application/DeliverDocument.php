@@ -18,12 +18,23 @@ final class DeliverDocument
     private $mailer;
     /** @var EventLogger */
     private $events;
+    /** @var string */
+    private $eventName;
 
-    public function __construct(PdfRenderer $pdf, Mailer $mailer, EventLogger $events)
+    public function __construct(
+        PdfRenderer $pdf,
+        Mailer $mailer,
+        EventLogger $events,
+        string $eventName = 'document.sent'
+    )
     {
+        if (trim($eventName) === '') {
+            throw new InvalidArgumentException('Delivery event name is required.');
+        }
         $this->pdf = $pdf;
         $this->mailer = $mailer;
         $this->events = $events;
+        $this->eventName = trim($eventName);
     }
 
     public function execute(
@@ -38,7 +49,7 @@ final class DeliverDocument
         $binary = $this->pdf->render($snapshot);
         $this->mailer->send($snapshot, $recipient, $subject, $message, $binary);
         $this->events->record(
-            'document.sent',
+            $this->eventName,
             $snapshot->toArray()['document_id'],
             ['recipient_hash' => hash('sha256', strtolower($recipient))]
         );
