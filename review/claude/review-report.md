@@ -4,6 +4,8 @@ Branch: `agent/geward-document-module-stage0`
 Baseline for the fixes: `cecbf84`
 Companion documents: `security-findings.md` (per-finding status), `test-results.md` (evidence), `pdf-engine-decision.md` (engine and logo), `admin-preview-wiring.md` (what is connected, and what is not)
 
+**Checkpoint status: PASS at `6a16f60`** (sandbox email capture, reviewed independently). Handoff, open risks and the local smoke-test procedure: `HANDOFF.md`.
+
 Constraints observed: no change to the main Geward repository, no branch or worktree change, no WordPress or database migration, no Laragon install, no deploy/push/merge/release, no real email, no external PDF or email provider, no Fakturownia or KSeF, no secrets in Git or the database.
 
 ---
