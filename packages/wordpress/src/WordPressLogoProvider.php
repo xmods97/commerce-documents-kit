@@ -82,12 +82,16 @@ final class WordPressLogoProvider implements LogoProvider
 
     private function resolve(): ?RasterImage
     {
-        $attachmentIds = array_values(array_unique(array_filter([
-            $this->media->customLogoAttachmentId(),
-            $this->media->themeHeaderLogoAttachmentId(),
-        ], static function ($id): bool {
+        $customLogoId = $this->media->customLogoAttachmentId();
+        // The Custom Logo is the explicit site setting. Avoid scanning all Divi
+        // header layouts when it is present; a rejected custom image remains a
+        // rejection rather than silently switching brand sources.
+        $attachmentIds = $customLogoId > 0
+            ? [$customLogoId]
+            : [$this->media->themeHeaderLogoAttachmentId()];
+        $attachmentIds = array_values(array_filter($attachmentIds, static function ($id): bool {
             return (int) $id > 0;
-        })));
+        }));
         if ($attachmentIds === []) {
             $this->rejection = 'No Custom Logo or theme header logo is set.';
             return null;

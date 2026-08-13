@@ -71,7 +71,7 @@ final class NativeOrderAdapter
                     Quantity::one(),
                     'service',
                     $shippingNet,
-                    $this->effectiveRate($shippingNet, $shippingTax),
+                    $this->taxRateForShipping($order, $shippingNet, $shippingTax),
                     $shippingNet,
                     $shippingTax
                 );
@@ -201,23 +201,57 @@ final class NativeOrderAdapter
      */
     private function taxRateForItem($item, Money $net, Money $tax): TaxRate
     {
-        if (method_exists($item, 'get_taxes') && class_exists('WC_Tax')) {
-            $taxes = (array) $item->get_taxes();
-            $totals = (array) ($taxes['total'] ?? []);
-            $rateIds = array_keys($totals);
-            if (count($rateIds) === 1 && method_exists('WC_Tax', 'get_rate_percent')) {
-                $rate = self::taxRateFromDecimal(
-                    (string) \WC_Tax::get_rate_percent((int) $rateIds[0])
-                );
-                if ($rate instanceof TaxRate) {
-                    return $rate;
-                }
-            }
+        if (!method_exists($item, 'get_taxes')) {
+            // Framework-free legacy objects did not expose the authoritative
+            // WooCommerce tax ID. Preserve their bounded compatibility path.
+            return $this->effectiveRate($net, $tax);
         }
 
-        // Framework-free tests and unusual legacy orders may not expose a tax
-        // rate ID. Keep the old bounded fallback for those cases.
-        return $this->effectiveRate($net, $tax);
+        $taxes = (array) $item->get_taxes();
+        return $this->taxRateForTotals((array) ($taxes['total'] ?? []), $net, $tax, 'line item');
+    }
+
+    private function taxRateForShipping($order, Money $net, Money $tax): TaxRate
+    {
+        if (!method_exists($order, 'get_shipping_taxes')) {
+            return $this->effectiveRate($net, $tax);
+        }
+
+        return $this->taxRateForTotals((array) $order->get_shipping_taxes(), $net, $tax, 'shipping');
+    }
+
+    /**
+     * A document item supports one tax rate. A declared WooCommerce rate must
+     * therefore resolve exactly once; never invent a blended percentage from
+     * rounded totals or multiple rates (for example 23% + 8% => false 31%).
+     *
+     * @param array<int|string, mixed> $totals
+     */
+    private function taxRateForTotals(array $totals, Money $net, Money $tax, string $context): TaxRate
+    {
+        $rateIds = array_keys($totals);
+        if ($rateIds === []) {
+            if ($tax->minorUnits() === 0) {
+                return TaxRate::zero();
+            }
+            throw new RuntimeException('WooCommerce ' . $context . ' has tax but no tax rate identifier.');
+        }
+        if (count($rateIds) !== 1) {
+            throw new RuntimeException(
+                'WooCommerce ' . $context . ' has multiple tax rates and cannot be represented safely.'
+            );
+        }
+        if (!class_exists('WC_Tax') || !method_exists('WC_Tax', 'get_rate_percent')) {
+            throw new RuntimeException('WooCommerce tax rate lookup is unavailable.');
+        }
+
+        $rate = self::taxRateFromDecimal(
+            (string) \WC_Tax::get_rate_percent((int) $rateIds[0])
+        );
+        if (!$rate instanceof TaxRate) {
+            throw new RuntimeException('WooCommerce tax rate identifier could not be resolved.');
+        }
+        return $rate;
     }
 
     private static function taxRateFromDecimal(string $value): ?TaxRate

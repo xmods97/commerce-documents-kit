@@ -8,9 +8,11 @@ require $root . '/tools/runtime-autoload.php';
 if (!class_exists('WC_Tax')) {
     class WC_Tax
     {
+        public static $rates = [1 => '23.0000%'];
+
         public static function get_rate_percent(int $taxRateId): string
         {
-            return '23.0000%';
+            return (string) (self::$rates[$taxRateId] ?? '');
         }
     }
 }
@@ -85,6 +87,11 @@ $inactive = new OrderData(
     Language::fromTag('pl-PL'), $seller, $buyer, [$item], 'cod'
 );
 $check('cancelled COD is rejected', $policy->documentTypeFor($inactive) === null);
+$completed = new OrderData(
+    '45', 'completed', '2026-08-12T10:00:00+00:00', '', $currency,
+    Language::fromTag('pl-PL'), $seller, $buyer, [$item], 'cod'
+);
+$check('completed COD is rejected to avoid a false unpaid notice', $policy->documentTypeFor($completed) === null);
 
 $native = (new NativeOrderAdapter($seller, Language::fromTag('pl-PL'), 2))->map(new class {
     public function get_id(): int { return 45; }
@@ -148,6 +155,48 @@ $roundedNative = (new NativeOrderAdapter($seller, Language::fromTag('pl-PL'), 2)
     public function get_billing_country(): string { return 'PL'; }
 });
 $check('rounded WooCommerce line still snapshots as 23%', $roundedNative->items[0]->taxRate()->partsPerMillion() === 230000, (string) $roundedNative->items[0]->taxRate()->partsPerMillion());
+
+$strictAdapter = new NativeOrderAdapter($seller, Language::fromTag('pl-PL'), 2);
+$strictRate = new ReflectionMethod($strictAdapter, 'taxRateForTotals');
+$strictRate->setAccessible(true);
+$check('multiple WooCommerce rate IDs are rejected instead of blended', (static function () use ($strictRate, $strictAdapter, $currency): bool {
+    try {
+        $strictRate->invoke(
+            $strictAdapter,
+            [1 => '23.00', 2 => '8.00'],
+            Money::fromMinorUnits(10000, $currency),
+            Money::fromMinorUnits(3100, $currency),
+            'line item'
+        );
+    } catch (RuntimeException $error) {
+        return strpos($error->getMessage(), 'multiple tax rates') !== false;
+    }
+    return false;
+})());
+\WC_Tax::$rates[1] = 'not-a-rate';
+$check('unresolvable WooCommerce rate ID is rejected instead of derived', (static function () use ($strictRate, $strictAdapter, $currency): bool {
+    try {
+        $strictRate->invoke(
+            $strictAdapter,
+            [1 => '5.88'],
+            Money::fromMinorUnits(2558, $currency),
+            Money::fromMinorUnits(588, $currency),
+            'line item'
+        );
+    } catch (RuntimeException $error) {
+        return strpos($error->getMessage(), 'could not be resolved') !== false;
+    }
+    return false;
+})());
+\WC_Tax::$rates[1] = '23.0000%';
+
+$adminSource = file_get_contents($root . '/packages/woocommerce/src/AdminController.php');
+$check(
+    'admin automation control writes the same option read by the order hook',
+    is_string($adminSource)
+        && strpos($adminSource, "register_setting('commerce_documents', 'commerce_documents_wc_order_confirmation_enabled'") !== false
+        && strpos($adminSource, 'commerce_documents_wc_shadow_enabled') === false
+);
 
 $pdf = (new BasicPdfRenderer(2))->render($snapshot);
 $check('PDF contains the unpaid COD marker', strpos($pdf, 'NIEOP') !== false);

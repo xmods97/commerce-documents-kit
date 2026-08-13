@@ -68,7 +68,9 @@ final class AdminController
                 return AdminSettings::sanitize((array) $input, $statuses);
             },
         ]);
-        register_setting('commerce_documents', 'commerce_documents_wc_shadow_enabled', [
+        // This is the actual option read by Plugin::observeOrderStatus(). Keep
+        // the admin control and the runtime gate on the same setting.
+        register_setting('commerce_documents', 'commerce_documents_wc_order_confirmation_enabled', [
             'type' => 'boolean',
             'sanitize_callback' => static function ($value): bool {
                 return (string) $value === '1';
@@ -96,17 +98,41 @@ final class AdminController
         $paidStatuses = (array) ($settings['paid_statuses'] ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES);
         $codPolicy = (string) ($settings['cod_policy'] ?? PaidOrderPolicy::COD_POLICY_NEVER);
         $offlineMethods = implode(', ', (array) ($settings['cod_offline_methods'] ?? []));
-        $enabled = get_option('commerce_documents_wc_shadow_enabled', false) === true;
+        $enabled = (string) get_option('commerce_documents_wc_order_confirmation_enabled', '0') === '1';
         $statuses = function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [];
         $search = isset($_GET['cdk_search']) ? sanitize_text_field(wp_unslash($_GET['cdk_search'])) : '';
         $documents = self::documents($search);
+        $migration = Installer::preflight();
+        $resolvedSettings = $settings;
+        $resolvedSettings['seller'] = $seller;
+        $settingsComplete = AdminSettings::isComplete($resolvedSettings);
+        $readableCount = count(array_filter($documents, static function (array $document): bool {
+            return !empty($document['readable']);
+        }));
 
-        echo '<div class="wrap"><h1>Commerce Documents</h1>';
+        echo '<div class="wrap cdk-admin">';
+        self::styles();
+        echo '<section class="cdk-hero"><div><p class="cdk-eyebrow">WooCommerce · local beta</p>'
+            . '<h1>Commerce Documents</h1>'
+            . '<p>Internal order confirmations, protected snapshots and safe local previews.</p></div>'
+            . '<span class="cdk-status ' . ($enabled ? 'is-enabled' : 'is-disabled') . '">'
+            . ($enabled ? 'Automatic paid confirmations enabled' : 'Automatic generation paused')
+            . '</span></section>';
         self::notice();
-        echo '<p><strong>Test mode:</strong> documents and sandbox PDF/.eml captures stay local. No external email or KSeF submission is performed.</p>';
+        echo '<div class="cdk-callout"><strong>Local beta mode.</strong> Documents, PDF previews and sandbox .eml files remain local. '
+            . 'No external email, Fakturownia or KSeF submission is performed.</div>';
+        echo '<div class="cdk-summary">'
+            . self::summaryCard('Documents shown', (string) count($documents), $search === '' ? 'Latest protected records' : 'Filtered result')
+            . self::summaryCard('Readable snapshots', (string) $readableCount, 'Encrypted and available to preview')
+            . self::summaryCard('Seller profile', $settingsComplete ? 'Ready' : 'Needs setup', $settingsComplete ? 'Required fields are complete' : 'Complete seller and paid-status settings')
+            . self::summaryCard('Database schema', (string) $migration['installed_version'] . ' / ' . (string) $migration['target_version'], $migration['upgrade_required'] ? 'Migration required' : 'Current')
+            . '</div>';
+
+        echo '<section class="cdk-card"><div class="cdk-card__head"><div><h2>Document settings</h2>'
+            . '<p>Choose the seller identity, language and the conditions for automatic paid confirmations.</p></div></div>';
         echo '<form method="post" action="options.php">';
         settings_fields('commerce_documents');
-        echo '<h2>Seller</h2><fieldset><label><input type="radio" name="commerce_documents_wc_settings[seller_source]" value="woocommerce" '
+        echo '<h3>Seller</h3><fieldset class="cdk-choice-row"><label><input type="radio" name="commerce_documents_wc_settings[seller_source]" value="woocommerce" '
             . checked($sellerSource, 'woocommerce', false) . '> Use WooCommerce store details</label><br>'
             . '<label><input type="radio" name="commerce_documents_wc_settings[seller_source]" value="manual" '
             . checked($sellerSource, 'manual', false) . '> Enter seller details manually</label></fieldset>'
@@ -126,13 +152,13 @@ final class AdminController
             echo '<option value="' . esc_attr($value) . '" ' . selected($settings['language'] ?? 'pl-PL', $value, false) . '>'
                 . esc_html($label) . '</option>';
         }
-        echo '</select></td></tr></table><h2>Automation</h2>';
-        echo '<input type="hidden" name="commerce_documents_wc_shadow_enabled" value="0">';
-        echo '<label><input type="checkbox" name="commerce_documents_wc_shadow_enabled" value="1" '
-            . checked($enabled, true, false) . '> Enable automatic test generation</label>';
-        echo '<p class="description">Only <strong>order confirmations</strong> are issued, and only for orders the policy '
-            . 'considers paid. Fiscal invoices and proformas are never generated here.</p>';
-        echo '<table class="widefat striped" style="max-width:900px;margin-top:16px"><thead><tr>'
+        echo '</select></td></tr></table><hr class="cdk-divider"><h3>Automatic paid confirmations</h3>';
+        echo '<input type="hidden" name="commerce_documents_wc_order_confirmation_enabled" value="0">';
+        echo '<label><input type="checkbox" name="commerce_documents_wc_order_confirmation_enabled" value="1" '
+            . checked($enabled, true, false) . '> Automatically create paid order confirmations</label>';
+        echo '<p class="description">Only <strong>order confirmations</strong> are issued after the selected paid status '
+            . 'and a WooCommerce payment date. Fiscal invoices, proformas and COD documents are never generated automatically.</p>';
+        echo '<table class="widefat striped cdk-status-table"><thead><tr>'
             . '<th>WooCommerce status</th><th>Counts as paid</th></tr></thead><tbody>';
         foreach ($statuses as $key => $label) {
             $status = strpos($key, 'wc-') === 0 ? substr($key, 3) : $key;
@@ -152,26 +178,32 @@ final class AdminController
             . '<p class="description">WooCommerce never records a payment date for offline gateways, so they are '
             . 'unpaid by default and is used only by the explicit manual COD action.</p>'
             . '</td></tr></table>';
-        submit_button('Save settings');
-        echo '</form><hr><h2>Generate for an existing order</h2><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+        submit_button('Save document settings');
+        echo '</form></section>';
+
+        echo '<section class="cdk-card cdk-quick-actions"><div class="cdk-card__head"><div><h2>Quick actions</h2>'
+            . '<p>Use these only to create a document for an existing order. Existing immutable documents are never overwritten.</p></div></div>'
+            . '<div class="cdk-action-grid"><div><h3>Paid order</h3><p>Create an internal order confirmation only when WooCommerce has a payment date.</p>'
+            . '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
         echo '<input type="hidden" name="action" value="commerce_documents_generate">';
         wp_nonce_field('commerce_documents_generate');
-        echo '<label>Order ID <input type="number" min="1" required name="order_id"></label> ';
-        submit_button('Generate test document', 'secondary', 'submit', false);
-        echo '</form>';
-        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin-top:8px">';
+        echo '<label for="cdk-paid-order">Order ID</label><input id="cdk-paid-order" type="number" min="1" required name="order_id"> ';
+        submit_button('Create paid confirmation', 'secondary', 'submit', false);
+        echo '</form></div><div><h3>Cash on delivery</h3><p>Creates an explicitly unpaid confirmation only for an active, unpaid COD order. Completed COD orders are refused.</p>'
+            . '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
         echo '<input type="hidden" name="action" value="commerce_documents_generate_cod">';
         wp_nonce_field('commerce_documents_generate_cod');
-        echo '<label>COD order ID <input type="number" min="1" required name="order_id"></label> ';
-        submit_button('Generate unpaid COD order', 'secondary', 'submit', false);
-        echo '</form><p class="description">COD is manual only. The order must use a configured offline gateway, have no payment date, and be in an active order status. It is never generated by the status hook.</p>';
-        echo '<h2>Generated documents</h2>';
-        echo '<form method="get"><input type="hidden" name="page" value="commerce-documents">'
+        echo '<label for="cdk-cod-order">COD order ID</label><input id="cdk-cod-order" type="number" min="1" required name="order_id"> ';
+        submit_button('Create unpaid COD confirmation', 'secondary', 'submit', false);
+        echo '</form></div></div></section>';
+
+        echo '<section class="cdk-card"><div class="cdk-card__head cdk-card__head--documents"><div><h2>Generated documents</h2>'
+            . '<p>Search by order, type or document ID. Document number search applies to the displayed records only because numbers are encrypted.</p></div>';
+        echo '<form method="get" class="cdk-search"><input type="hidden" name="page" value="commerce-documents">'
             . '<input type="search" name="cdk_search" value="' . esc_attr($search) . '" placeholder="Number, order, type or document ID"> '
-            . '<button class="button">Search</button></form>';
-        $migration = Installer::preflight();
-        echo '<hr><h2>Database migration</h2><p>Installed schema: ' . esc_html((string) $migration['installed_version'])
-            . ' / target: ' . esc_html((string) $migration['target_version']) . '</p>';
+            . '<button class="button">Search</button></form></div>';
+        echo '<details class="cdk-migration"><summary>Database schema · ' . esc_html((string) $migration['installed_version'])
+            . ' / target: ' . esc_html((string) $migration['target_version']) . '</summary>';
         foreach ((array) ($migration['warnings'] ?? []) as $warning) {
             echo '<div class="notice notice-warning inline"><p>' . esc_html((string) $warning) . '</p></div>';
         }
@@ -192,10 +224,11 @@ final class AdminController
         } else {
             echo '<p>Schema is current. No migration is required.</p>';
         }
+        echo '</details>';
         if ($documents === []) {
-            echo '<p>No documents have been generated yet.</p>';
+            echo '<div class="cdk-empty"><strong>No documents found.</strong><br>Generate a protected test confirmation from the quick actions above.</div>';
         } else {
-            echo '<table class="widefat striped"><thead><tr><th>Number</th><th>Type</th><th>Order</th><th>Created</th>'
+            echo '<div class="cdk-table-wrap"><table class="widefat striped cdk-documents"><thead><tr><th>Number</th><th>Type</th><th>Order</th><th>Created</th>'
                 . '<th>State</th><th>Audit</th><th>Actions</th></tr></thead><tbody>';
             foreach ($documents as $document) {
                 $url = wp_nonce_url(
@@ -211,13 +244,15 @@ final class AdminController
                 );
                 $supersededBy = (string) ($document['superseded_by'] ?? '');
                 $state = $supersededBy !== ''
-                    ? 'Replaced by ' . $supersededBy
-                    : ($document['readable'] ? 'Issued' : 'UNREADABLE');
+                    ? '<span class="cdk-badge cdk-badge--replaced">Replaced</span><small>' . esc_html($supersededBy) . '</small>'
+                    : ($document['readable']
+                        ? '<span class="cdk-badge cdk-badge--issued">Issued</span>'
+                        : '<span class="cdk-badge cdk-badge--unreadable">Unreadable</span>');
                 echo '<tr><td>' . esc_html($document['document_number']) . '</td><td>'
                     . esc_html($document['document_type']) . '</td><td>#' . esc_html($document['source_id'])
                     . '</td><td>' . esc_html($document['created_at'])
-                    . '</td><td>' . esc_html($state)
-                    . '</td><td>' . esc_html((string) $document['audit_count']) . '</td><td><a class="button" target="_blank" href="'
+                    . '</td><td>' . $state
+                    . '</td><td><span class="cdk-audit">' . esc_html((string) $document['audit_count']) . '</span></td><td class="cdk-actions"><a class="button" target="_blank" href="'
                     . esc_url($url) . '">View / print</a>';
                 if ($document['readable']) {
                     echo ' <a class="button" target="_blank" href="' . esc_url($pdfUrl) . '">Preview PDF</a>';
@@ -241,9 +276,9 @@ final class AdminController
                 }
                 echo '</td></tr>';
             }
-            echo '</tbody></table>';
+            echo '</tbody></table></div>';
         }
-        echo '</div>';
+        echo '</section></div>';
     }
 
     public static function generate(): void
@@ -462,12 +497,12 @@ final class AdminController
             return '';
         }
         $media = new NativeMediaLibrary();
-        $ids = array_values(array_unique(array_filter([
-            $media->customLogoAttachmentId(),
-            $media->themeHeaderLogoAttachmentId(),
-        ], static function ($id): bool {
+        $customLogoId = $media->customLogoAttachmentId();
+        $ids = array_values(array_filter(
+            $customLogoId > 0 ? [$customLogoId] : [$media->themeHeaderLogoAttachmentId()],
+            static function ($id): bool {
             return (int) $id > 0;
-        })));
+        }));
         foreach ($ids as $id) {
             $mime = strtolower(trim($media->mimeTypeOf((int) $id)));
             if (!in_array($mime, ['image/png', 'image/jpeg'], true)) {
@@ -749,6 +784,19 @@ final class AdminController
     private static function codec(): EncryptedSnapshotCodec
     {
         return new EncryptedSnapshotCodec(new OpenSslAesGcmCipher(ConfigKeyProvider::encryptionKey()));
+    }
+
+    private static function summaryCard(string $label, string $value, string $detail): string
+    {
+        return '<div class="cdk-summary__card"><span>' . esc_html($label) . '</span><strong>'
+            . esc_html($value) . '</strong><small>' . esc_html($detail) . '</small></div>';
+    }
+
+    private static function styles(): void
+    {
+        echo '<style>
+        .cdk-admin{max-width:1240px}.cdk-admin h1,.cdk-admin h2,.cdk-admin h3{margin-top:0;color:#172033}.cdk-admin h2{font-size:20px}.cdk-admin h3{font-size:15px;margin-bottom:8px}.cdk-hero{display:flex;gap:24px;justify-content:space-between;align-items:center;margin:18px 0 16px;padding:25px 28px;border-radius:12px;background:linear-gradient(120deg,#0f2744,#123d66);color:#fff}.cdk-hero h1{margin:2px 0 7px;color:#fff;font-size:28px}.cdk-hero p{margin:0;color:#d7e8f7}.cdk-eyebrow{text-transform:uppercase;letter-spacing:.08em;font-size:11px;font-weight:700}.cdk-status{padding:8px 11px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}.cdk-status.is-enabled{background:#d8f3e5;color:#075a31}.cdk-status.is-disabled{background:#fff0d8;color:#8a4b00}.cdk-callout{margin:0 0 18px;padding:13px 16px;border-left:4px solid #00a8a8;background:#edf8f8;color:#24404a}.cdk-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}.cdk-summary__card,.cdk-card{background:#fff;border:1px solid #dbe3ea;border-radius:10px;box-shadow:0 1px 2px rgba(15,39,68,.04)}.cdk-summary__card{padding:15px}.cdk-summary__card span,.cdk-summary__card small{display:block;color:#667085;font-size:12px}.cdk-summary__card strong{display:block;margin:7px 0;color:#172033;font-size:21px}.cdk-card{padding:22px;margin:0 0 18px}.cdk-card__head{display:flex;gap:20px;justify-content:space-between;align-items:flex-start;margin-bottom:18px}.cdk-card__head p{margin:4px 0 0;color:#667085}.cdk-choice-row{display:flex;gap:20px;flex-wrap:wrap}.cdk-choice-row br{display:none}.cdk-divider{border:0;border-top:1px solid #e5e7eb;margin:24px 0}.cdk-status-table{max-width:760px;margin:14px 0}.cdk-quick-actions{background:linear-gradient(180deg,#fff,#f8fbfd)}.cdk-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.cdk-action-grid>div{padding:17px;border:1px solid #dbe7ef;border-radius:8px;background:#fff}.cdk-action-grid p{min-height:36px;color:#526172}.cdk-action-grid label{font-weight:600;margin-right:8px}.cdk-action-grid input[type=number]{width:104px}.cdk-search{display:flex;gap:8px;align-items:center}.cdk-search input{min-width:280px}.cdk-migration{margin:0 0 16px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc}.cdk-migration summary{cursor:pointer;font-weight:600;color:#334155}.cdk-migration[open] summary{margin-bottom:12px}.cdk-table-wrap{overflow-x:auto}.cdk-documents th{white-space:nowrap}.cdk-documents td{vertical-align:top}.cdk-badge{display:inline-block;padding:3px 7px;border-radius:99px;font-size:11px;font-weight:700}.cdk-badge--issued{background:#ddf7e6;color:#086236}.cdk-badge--replaced{background:#fff0d8;color:#8a4b00}.cdk-badge--unreadable{background:#fde2e1;color:#a12622}.cdk-documents td small{display:block;margin-top:4px;color:#667085;word-break:break-all}.cdk-audit{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:#edf2f7;font-weight:700}.cdk-actions{min-width:280px}.cdk-actions form{display:inline-block;margin:0 0 6px 6px}.cdk-actions input[type=text]{max-width:155px}.cdk-empty{padding:24px;border:1px dashed #b7c7d5;border-radius:8px;text-align:center;color:#526172}@media(max-width:782px){.cdk-hero,.cdk-card__head{align-items:flex-start;flex-direction:column}.cdk-summary,.cdk-action-grid{grid-template-columns:1fr}.cdk-search{width:100%;flex-wrap:wrap}.cdk-search input{width:100%;min-width:0}.cdk-actions{min-width:250px}}
+        </style>';
     }
 
     private static function field(

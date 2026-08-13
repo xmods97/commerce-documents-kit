@@ -18,7 +18,10 @@ use Xmods\CommerceDocuments\WooCommerce\Contracts\OrderGenerationPolicy;
  */
 final class CodOrderPolicy implements OrderGenerationPolicy
 {
-    public const DEFAULT_STATUSES = ['pending', 'on-hold', 'processing', 'completed'];
+    // A completed COD order has normally been collected by the carrier. WooCommerce
+    // does not reliably set paid_at for offline gateways, so it must not receive an
+    // immutable "unpaid" notice merely because that date is empty.
+    public const DEFAULT_STATUSES = ['pending', 'on-hold', 'processing'];
 
     /** @var string[] */
     private $statuses;
