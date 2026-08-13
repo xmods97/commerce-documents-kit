@@ -17,6 +17,9 @@ use Xmods\CommerceDocuments\WordPress\Contracts\MediaLibrary;
  */
 final class NativeMediaLibrary implements MediaLibrary
 {
+    /** Header layouts are a fallback only; never parse an unbounded post set. */
+    private const MAX_HEADER_LAYOUTS = 12;
+
     public function customLogoAttachmentId(): int
     {
         if (!function_exists('get_theme_mod')) {
@@ -35,7 +38,7 @@ final class NativeMediaLibrary implements MediaLibrary
         $layouts = get_posts([
             'post_type' => 'et_header_layout',
             'post_status' => 'publish',
-            'posts_per_page' => -1,
+            'posts_per_page' => self::MAX_HEADER_LAYOUTS,
             'orderby' => 'modified',
             'order' => 'DESC',
             'suppress_filters' => true,
@@ -71,8 +74,9 @@ final class NativeMediaLibrary implements MediaLibrary
                 continue;
             }
             $attrs = $block['attrs'] ?? [];
-            if (self::containsLogoMarker($attrs)) {
-                $id = self::findNumericId($attrs);
+            $blockName = strtolower((string) ($block['blockName'] ?? ''));
+            if (self::isHeaderLogoImageBlock($blockName, (array) $attrs)) {
+                $id = self::imageAttachmentId((array) $attrs);
                 if ($id > 0) {
                     return $id;
                 }
@@ -86,30 +90,60 @@ final class NativeMediaLibrary implements MediaLibrary
         return 0;
     }
 
-    private static function containsLogoMarker($value): bool
+    /** @param array<string|int, mixed> $attrs */
+    private static function isHeaderLogoImageBlock(string $blockName, array $attrs): bool
+    {
+        return preg_match('#/(?:image|logo)$#', $blockName) === 1
+            && self::containsHeaderLogoClass($attrs);
+    }
+
+    private static function containsHeaderLogoClass($value): bool
     {
         if (is_string($value)) {
-            return preg_match('/\blogo\b|header-logo/i', $value) === 1;
+            return preg_match('/(?:^|\s)[a-z0-9_-]*header-logo[a-z0-9_-]*(?:\s|$)/i', $value) === 1;
         }
         if (!is_array($value)) {
             return false;
         }
         foreach ($value as $child) {
-            if (self::containsLogoMarker($child)) {
+            if (self::containsHeaderLogoClass($child)) {
                 return true;
             }
         }
         return false;
     }
 
-    private static function findNumericId($value): int
+    /** @param array<string|int, mixed> $attrs */
+    private static function imageAttachmentId(array $attrs): int
     {
-        if (is_array($value)) {
-            foreach ($value as $key => $child) {
-                if ($key === 'id' && is_numeric($child) && (int) $child > 0) {
-                    return (int) $child;
+        foreach ($attrs as $key => $value) {
+            if (in_array((string) $key, ['image', 'image_id', 'imageId'], true)) {
+                $id = self::numericId($value);
+                if ($id > 0) {
+                    return $id;
                 }
-                $id = self::findNumericId($child);
+            }
+            if (is_array($value)) {
+                $id = self::imageAttachmentId($value);
+                if ($id > 0) {
+                    return $id;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static function numericId($value): int
+    {
+        if (!is_array($value)) {
+            return 0;
+        }
+        foreach ($value as $key => $child) {
+            if ($key === 'id' && is_numeric($child) && (int) $child > 0) {
+                return (int) $child;
+            }
+            if (is_array($child)) {
+                $id = self::numericId($child);
                 if ($id > 0) {
                     return $id;
                 }
