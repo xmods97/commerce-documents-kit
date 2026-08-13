@@ -226,6 +226,13 @@ $check(
         && strpos($pluginSource, 'generateOrderConfirmationForOrder($order)') !== false
         && strpos($pluginSource, 'generatePaymentConfirmationForOrder($order)') !== false
 );
+$check(
+    'seller fields become editable when manual source is selected',
+    is_string($adminSource)
+        && strpos($adminSource, 'data-cdk-seller-source-field') !== false
+        && strpos($adminSource, 'radios[i].addEventListener("change",sync)') !== false
+        && strpos($adminSource, 'fields[j].readOnly=!manual') !== false
+);
 
 $pdf = (new BasicPdfRenderer(2))->render($snapshot);
 $check('PDF contains the unpaid COD marker', strpos($pdf, 'NIEOP') !== false);

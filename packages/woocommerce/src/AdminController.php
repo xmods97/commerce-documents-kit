@@ -165,6 +165,7 @@ final class AdminController
         self::addressField('City', 'city', (string) ($address['city'] ?? ''), $sellerSource === 'woocommerce');
         self::addressField('Region', 'region', (string) ($address['region'] ?? ''), $sellerSource === 'woocommerce');
         self::addressField('Country code', 'country_code', (string) ($address['country_code'] ?? ''), $sellerSource === 'woocommerce');
+        self::sellerSourceScript();
         echo '<tr><th>Document language</th><td><select name="commerce_documents_wc_settings[language]">';
         foreach (['pl-PL' => 'Polski', 'en' => 'English'] as $value => $label) {
             echo '<option value="' . esc_attr($value) . '" ' . selected($settings['language'] ?? 'pl-PL', $value, false) . '>'
@@ -864,6 +865,7 @@ final class AdminController
     {
         echo '<tr><th>' . esc_html($label) . '</th><td><input class="regular-text" type="' . esc_attr($type)
             . '" name="commerce_documents_wc_settings[seller][' . esc_attr($key) . ']" value="' . esc_attr($value) . '"'
+            . ($key === 'tax_identifier' ? '' : ' data-cdk-seller-source-field="1"')
             . ($readOnly ? ' readonly' : '') . '></td></tr>';
     }
 
@@ -871,7 +873,18 @@ final class AdminController
     {
         echo '<tr><th>' . esc_html($label) . '</th><td><input class="regular-text" type="text" name="commerce_documents_wc_settings[seller][address]['
             . esc_attr($key) . ']" value="' . esc_attr($value) . '"'
+            . ' data-cdk-seller-source-field="1"'
             . ($readOnly ? ' readonly' : '') . '></td></tr>';
+    }
+
+    private static function sellerSourceScript(): void
+    {
+        echo '<script>(function(){'
+            . 'var radios=document.querySelectorAll("input[name=\"commerce_documents_wc_settings[seller_source]\"]");'
+            . 'var fields=document.querySelectorAll("[data-cdk-seller-source-field]");'
+            . 'function sync(){var manual=false;for(var i=0;i<radios.length;i++){if(radios[i].checked&&radios[i].value==="manual"){manual=true;break;}}for(var j=0;j<fields.length;j++){fields[j].readOnly=!manual;}}'
+            . 'for(var i=0;i<radios.length;i++){radios[i].addEventListener("change",sync);}sync();'
+            . '})();</script>';
     }
 
     private static function notice(): void
