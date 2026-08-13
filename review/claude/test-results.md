@@ -387,6 +387,83 @@ Both now decode the MIME parts: the attachment must equal the rendered document 
 
 The capability check, the nonce, the `admin_post` registration and the absence of `admin_post_nopriv_*` are source-level facts confirmed by grep and by the harness; no WordPress runtime was involved. PHP 7.4 compatibility was checked by scanning `packages/` for 8.0-only syntax — none present.
 
-## 11. Environment note (not a product finding)
+## 11. Beta review of `0c03c56`, `46beb36`, `7baa9d2`
+
+Offline only. No install, no migration, no database change, no email, no network. Runtime code was not modified; the two probes used were created under `review/claude/` and deleted after the run.
+
+### Checks that actually ran
+
+| Check | Result |
+|---|---|
+| `git status` / `git diff` | Working tree clean at `7baa9d2` |
+| PHP lint, files changed in the three commits | 19 files, 0 errors |
+| PHP lint, whole tree | 107 files, 0 errors |
+| `review/claude/verify-beta-runtime.php` | 10/10, exit 0 |
+| `review/claude/verify-pdf-engine.php` | 87/87, exit 0 |
+| `review/claude/verify-logo-security.php` | 69/69, exit 0 |
+| `review/claude/verify-admin-preview.php` | 34/34, exit 0 |
+| `review/claude/verify-fixes.php` | 59/59, exit 0 |
+| `review/claude/verify-sandbox-admin-wiring.php` | 19/19, exit 0 |
+| `git diff --check` | clean |
+| PHPUnit | **not run** — `vendor/` absent, needs network. Stated limitation, not a failure. |
+
+### The VAT fix, driven rather than read
+
+A temporary probe stubbed `WC_Tax` and fed fake order items through `NativeOrderAdapter`, then rendered the result and read the text back out of the PDF.
+
+```
+A. two real 23% lines, one rounding-unfriendly
+   Mała pozycja    ppm=230000   net=87     tax=20
+   Duża pozycja    ppm=230000   net=10000  tax=2300
+   derived-from-amounts for the small line would have been ppm=229885
+
+G. VAT summary as rendered
+   Zestawienie VAT (PLN)
+   VAT / Netto / Podatek / Brutto
+   8%    50,00    4,00    54,00
+   23%  100,87   23,20   124,07
+   distinct rate labels on the document: 23%, 8%
+```
+
+Two lines at the same real rate produce **one** group, and the group is `23%` — not two groups at `22,98%` and `23%`. That is the fix working.
+
+```
+B. legacy item with no get_taxes()          ppm=229885  (intended fallback)
+C. rate id present, rate row missing        ppm=229885  (silent, no marker)  -> finding 1
+D. two rate ids on one line                 ppm=310000  (matches neither)    -> finding 2
+E. zero rate                                ppm=0
+F. 23.5 / 5.5 / 7.77 / 100 / 0.0001 percent 235000 / 55000 / 77700 / 1000000 / 1
+```
+
+F is the rounding check: the decimal-to-ppm conversion is integer-only and exact at every rate tried, including the boundary at 100% and a rate below one part per million.
+
+### The COD marker, driven the same way
+
+```
+qualifies(processing, cod, unpaid)          true
+  payment_status  = cash_on_delivery_unpaid
+  payment_notice  = Nieopłacone — płatność przy odbiorze
+marker on the document                      YES
+paid document carries the marker            NO
+qualifies(completed, cod, no payment date)  true   -> finding 3
+```
+
+The last line is the one that matters: a completed COD order — money collected by the courier — still qualifies and is stamped unpaid, because WooCommerce records no payment date for an offline gateway.
+
+### Static confirmations
+
+| Question | Answer |
+|---|---|
+| Fakturownia / KSeF integration? | None. Three matches, all comments or one UI sentence. |
+| Secrets written to options or Git? | None. The only `update_option` is `NativeOptionStore.php:25` and it stores no key material. |
+| HPOS declaration? | Present in the plugin entry point. |
+| Which order hooks are live? | One: `woocommerce_order_status_changed` → `observeOrderStatus`, gated on an option that has no UI and defaults to off. |
+| Is the theme logo lookup on the render path? | Yes — `WordPressLogoProvider.php:87`, called on every resolve. |
+
+### Not checked
+
+No WordPress or WooCommerce runtime; `WC_Tax` was stubbed and its real return format assumed. No page was rasterised. The Divi block structure was inferred rather than taken from a real `et_header_layout` post. PHPUnit did not run.
+
+## 12. Environment note (not a product finding)
 
 On the second harness run, `SandboxMailer::__construct()` threw `Sandbox mail directory is not writable` for a directory it had itself created on the previous run. This is a Windows/OneDrive ACL artifact of the review sandbox, not a defect in the mailer; the harness was changed to use a unique directory per run and the check then passed. I mention it only so the log is not misread.

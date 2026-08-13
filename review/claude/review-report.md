@@ -6,6 +6,137 @@ Companion documents: `security-findings.md` (per-finding status), `test-results.
 
 **Checkpoint status: PASS at `6a16f60`** (sandbox email capture, reviewed independently). Handoff, open risks and the local smoke-test procedure: `HANDOFF.md`.
 
+---
+
+# Beta review — `0c03c56`, `46beb36`, `7baa9d2`
+
+**Verdict: PASS for local beta, with one item that must be fixed first.** No blocker. Runtime was not modified by this review; only `review/claude/` was touched.
+
+Branch `agent/geward-document-module-stage0`, HEAD `7baa9d2`, working tree clean.
+
+## VAT fix — separate verdict: **PASS, confirmed by reproduction**
+
+The rate now comes from the WooCommerce rate table, not from rounded line amounts, and equal rates group into one row. Driven through `NativeOrderAdapter` against a stubbed `WC_Tax` and fake order items:
+
+| Case | Result |
+|---|---|
+| Two 23% lines, one rounding-unfriendly (`0,87` net / `0,20` tax, and `100,00` / `23,00`) | Both `ppm = 230000`. Derived from amounts the small line would have been `229885`. |
+| Rendered VAT summary for those two lines plus an 8% line | **Two groups, not three**: `23%  100,87  23,20  124,07` and `8%  50,00  4,00  54,00`. |
+| Legacy item with no `get_taxes()` | Falls back to the derived rate — the intended behaviour. |
+| Zero rate | `ppm = 0`. |
+| `23.5 / 5.5 / 7.77 / 100 / 0.0001` percent | `235000 / 55000 / 77700 / 1000000 / 1` — the decimal-to-ppm conversion is exact, integer-only, with no rounding defect found. |
+
+Two qualifications, both below.
+
+**Note, not a defect:** the document prints `23%`, not `23,00%`. `EmbeddedFontPdfRenderer.php:722` (`percentage()`) omits a zero fraction. Grouping — the substantive requirement — is confirmed; the label is a one-line formatting decision if `23,00%` is wanted.
+
+## Findings
+
+### 1. Medium — the fallback is indistinguishable from the authoritative rate, and can print a rate that does not exist
+
+`packages/woocommerce/src/NativeOrderAdapter.php:202-221`
+
+If an item **does** carry a tax rate ID but `WC_Tax::get_rate_percent()` returns nothing — the rate row was deleted, or the order was imported from another install — the code silently derives the rate from rounded amounts instead.
+
+*Reproduced:* item with `total 0.87`, `total_tax 0.20`, `taxes['total'] = [7 => '0.20']`, rate 7 absent from the table → `ppm = 229885` → the document prints **22,98%** and opens a **separate VAT group** beside the real 23%. Nothing in the PDF, the snapshot metadata or the audit trail records which path produced the number.
+
+This is the one place where the review goal "the fallback must not hide an error or invent a rate" is not met: it does both, quietly.
+
+*Beta:* low likelihood — rates are stable on a live shop. *Production:* this is exactly how a VAT summary becomes wrong without anyone noticing.
+
+*Suggested:* record the provenance in snapshot metadata (`tax_rate_source = wc_rate:<id>` / `derived`), and consider refusing to issue when a declared rate ID cannot be resolved. Deriving is fine when there is no rate ID; deriving *instead of* a rate ID that failed to resolve is not.
+
+### 2. Medium — a line with several tax rate IDs gets a blended rate that matches none of them
+
+`packages/woocommerce/src/NativeOrderAdapter.php:208` — the authoritative path is taken only when `count($rateIds) === 1`.
+
+*Reproduced:* one line, `100,00` net, `31,00` tax, `taxes['total'] = [1 => '23.00', 2 => '8.00']` → `ppm = 310000` → the document prints **31%** and groups under a rate that is in no tax table. Compound rates have the same problem by construction, because `effectiveRate()` is tax ÷ net and a compound rate is charged on net + previous tax.
+
+*Beta:* unlikely — GEWARD is a single-rate Polish shop. *Production / any EU multi-rate or compound setup:* the VAT breakdown is wrong.
+
+*Suggested:* split the line into one document item per rate ID, or refuse and say why.
+
+### 3. Medium — a **completed** cash-on-delivery order is still stamped "Nieopłacone" — *fix before beta*
+
+`packages/woocommerce/src/CodOrderPolicy.php:21` (`DEFAULT_STATUSES` includes `completed`) and `:65-70`.
+
+*Reproduced:* `status = completed`, `payment_method = cod`, no payment date → `qualifies() === true`, and the decision carries `payment_notice = Nieopłacone — płatność przy odbiorze`. The rendered document shows `NIEOPŁACONE — płatność przy odbiorze`.
+
+On a completed COD order the courier has normally handed the money over, and WooCommerce never records a payment date for an offline gateway — so the document asserts to the customer that they have not paid when they have. COD is precisely the case this action exists for, so beta will hit it.
+
+*Beta:* yes. *Suggested:* drop `completed` from the default statuses, or require the operator to confirm explicitly for that status.
+
+### 4. Low — the theme header logo is looked up on every render, even when a Custom Logo is set
+
+`packages/wordpress/src/WordPressLogoProvider.php:85-90` collects both attachment ids before trying either; `packages/wordpress/src/NativeMediaLibrary.php:29-64` runs `get_posts(['posts_per_page' => -1])` and `parse_blocks()` on every call.
+
+So every PDF preview and every sandbox capture costs one unbounded post query plus a full block parse of every published `et_header_layout`, even when the Custom Logo already answers.
+
+*Beta:* harmless at operator pace. *Production or bulk rendering:* needless load. *Suggested:* consult the theme only when `customLogoAttachmentId()` returns 0.
+
+### 5. Low — the theme logo is matched by substring, so it can select the wrong image
+
+`packages/wordpress/src/NativeMediaLibrary.php:89-119`. Any block attribute blob containing `logo` (case-insensitive) is accepted, and then the **first** numeric `id` found anywhere beneath it wins. A module whose attributes mention "logo" incidentally, or which carries several ids, can yield an attachment that is not the logo. It fails closed only when *different layouts* disagree, not within one layout.
+
+Security is unaffected — the id still goes through the uploads containment, MIME, `finfo`/`getimagesize` and size checks — but the wrong brand can land on a document.
+
+*Beta:* possible if the header layout is complex. *Suggested:* match a named attribute rather than any string.
+
+### 6. Low — the registered setting is not the setting that gates automatic generation
+
+`packages/woocommerce/src/Plugin.php:66` gates the order hook on `commerce_documents_wc_order_confirmation_enabled`; `packages/woocommerce/src/AdminController.php:71,99,130-131` registers and renders `commerce_documents_wc_shadow_enabled`.
+
+The live gate has no UI and defaults to `'0'`, so automatic generation is off and cannot be switched on from the admin — a safe posture, reached by accident. The checkbox an operator does see controls nothing.
+
+*Beta:* no risk, but confusing. *Suggested:* register the real option, or delete the dead one.
+
+### 7. Low — the HTML view now references an upload by URL
+
+`packages/woocommerce/src/AdminController.php:459-489`. Same-origin is enforced (scheme `http`/`https`, host equal to the `home_url()` host) and **the PDF path is untouched — it still resolves no URL and embeds bytes**. But the printable HTML is no longer self-contained, which matters if it is ever archived or attached.
+
+Also at `AdminController.php:481`, `wp_parse_url()` is called inside a branch guarded only by `function_exists('home_url')`. Both always exist in WordPress, so this is latent rather than live.
+
+### 8. Low — `payment_notice` is stored in the snapshot and never rendered
+
+`packages/woocommerce/src/CodOrderPolicy.php:81` stores `Nieopłacone — płatność przy odbiorze`; the renderer prints its own catalogue label `NIEOPŁACONE — płatność przy odbiorze`. Two sources of truth for one sentence, already differing in case. Harmless today; a translation change makes them diverge.
+
+## What still holds — re-verified, not assumed
+
+- **Encrypted snapshot storage, immutability, audit HMAC chain:** `verify-fixes.php` 59/59 covers C1, H1, H5 and H6 unchanged.
+- **Admin preview permissions and nonce:** capability first, then a nonce bound to the document; `verify-admin-preview.php` 34/34.
+- **Custom Logo from uploads, SVG and untrusted files refused:** `verify-logo-security.php` 69/69. The **theme-derived** attachment goes through the same containment and format checks — that path did not widen the surface.
+- **Sandbox delivery, no real send:** `verify-sandbox-admin-wiring.php` 19/19. Two improvements arrived in this range and are worth naming: `AdminController.php:392-400` refuses to write a capture unless the audit chain verifies, and `DeliverDocument` now stages → commits → records, discarding the artifact if the audit write fails, so a failed event leaves no orphan file.
+- **No automatic invoice/proforma flow:** the only order hook is `woocommerce_order_status_changed` → `observeOrderStatus`, gated off (finding 6); `Plugin.php:165` hard-codes `COD_POLICY_NEVER` for the automatic path, so COD can never become an automatic paid document; legacy fiscal types remain readable but not issuable.
+- **COD marker:** renders for an unpaid COD document and is absent from a paid one — both reproduced.
+- **No Fakturownia, no KSeF:** only comments and one UI sentence mention them; no integration.
+- **No secrets in Git or the database:** the only `update_option` writing anything is `NativeOptionStore.php:25`, and it stores no key material; keys resolve from `wp-config` constants.
+- **HPOS:** `declare_compatibility('custom_order_tables', …)` still present in the plugin entry point.
+- **The VAT change breaks nothing downstream:** totals, pagination, corrections, COD, logo embedding and layout all still pass — `verify-pdf-engine.php` 87/87 including the collision detector.
+
+## Must fix before beta
+
+1. Finding 3 — a completed COD order stamped "Nieopłacone".
+
+## Should fix before production
+
+2. Finding 1 — unresolvable rate ID silently derives a rate.
+3. Finding 2 — multiple rate IDs per line blend into a non-existent rate.
+4. Finding 4 — theme lookup on every render.
+5. Finding 6 — dead registered setting versus the live gate.
+
+## Optional
+
+Findings 5, 7, 8, and the `23%` versus `23,00%` label.
+
+## What could not be checked
+
+- **No WordPress or WooCommerce runtime.** `WC_Tax` was stubbed; the real `get_rate_percent()` return format is assumed to be the documented `"23.0000"`. Capability checks, nonces, `wpdb` and the media lookups are verified by reading and by fixture-backed stand-ins.
+- **PHPUnit was not run** — `vendor/` is absent and installing it needs network access. This is a stated limitation, not a failure; every test file lints clean and the equivalent assertions run in the harnesses.
+- **No page was rasterised.** Layout is verified arithmetically.
+- **The Divi block shapes are inferred**, not taken from a real `et_header_layout` post.
+
+---
+
 Constraints observed: no change to the main Geward repository, no branch or worktree change, no WordPress or database migration, no Laragon install, no deploy/push/merge/release, no real email, no external PDF or email provider, no Fakturownia or KSeF, no secrets in Git or the database.
 
 ---
