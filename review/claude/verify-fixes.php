@@ -212,7 +212,7 @@ foreach ([
     );
 }
 $paidType = $default->documentTypeFor(order('processing', '2026-08-11T10:00:00+00:00', 'stripe'));
-check('paid order yields order_confirmation', $paidType !== null && $paidType->value() === DocumentType::ORDER_CONFIRMATION, $paidType ? $paidType->value() : 'null');
+check('paid order yields payment_confirmation', $paidType !== null && $paidType->value() === DocumentType::PAYMENT_CONFIRMATION, $paidType ? $paidType->value() : 'null');
 check('invoice/proforma are never produced', $paidType === null || !in_array($paidType->value(), [DocumentType::INVOICE, DocumentType::PROFORMA], true));
 
 $enrolled = new PaidOrderPolicy(PaidOrderPolicy::DEFAULT_PAID_STATUSES, PaidOrderPolicy::COD_POLICY_STATUS_ONLY, ['cod']);

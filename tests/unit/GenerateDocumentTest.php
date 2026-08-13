@@ -94,6 +94,7 @@ final class GenerateDocumentTest extends TestCase
 
         self::assertSame(0, $repository->saveCount);
         self::assertTrue(DocumentType::fromString(DocumentType::ORDER_CONFIRMATION)->isIssuable());
+        self::assertTrue(DocumentType::fromString(DocumentType::PAYMENT_CONFIRMATION)->isIssuable());
         self::assertTrue(DocumentType::fromString(DocumentType::CORRECTION)->isIssuable());
     }
 

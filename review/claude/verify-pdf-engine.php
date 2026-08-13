@@ -1052,10 +1052,10 @@ foreach (DocumentType::values() as $value) {
         $issuable[] = $value;
     }
 }
-check('every legacy type is still constructible, so historical rows stay readable',
-    count($readable) === 7, implode(', ', $readable));
-check('only order_confirmation and correction may be issued',
-    $issuable === ['order_confirmation', 'correction'], implode(', ', $issuable));
+check('every historical and internal type is constructible, so historical rows stay readable',
+    count($readable) === 8, implode(', ', $readable));
+check('only internal confirmations and correction may be issued',
+    $issuable === ['order_confirmation', 'payment_confirmation', 'correction'], implode(', ', $issuable));
 
 $refused = [];
 foreach (['invoice', 'proforma', 'receipt', 'credit_note', 'quote'] as $legacy) {

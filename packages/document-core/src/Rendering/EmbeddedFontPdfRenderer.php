@@ -193,13 +193,13 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
             );
         }
 
-        if (self::isUnpaidOnDelivery($metadata)) {
+        if (self::paymentBadge($metadata) !== '') {
             // Boxed rather than inline: whether the money has arrived is the single
             // fact an operator reads off this document first.
             $page->advance(4.0);
             $top = $page->y();
             $page->box(PageBuilder::MARGIN, $top - 18.0, PageBuilder::RIGHT - PageBuilder::MARGIN, 20.0);
-            $page->text(PageBuilder::MARGIN + 8.0, $top - 12.0, $labels['unpaid_cod'], 10.0, true);
+            $page->text(PageBuilder::MARGIN + 8.0, $top - 12.0, self::paymentBadge($metadata), 10.0, true);
             $page->moveTo($top - 24.0);
         }
 
@@ -688,6 +688,16 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
         return (string) ($metadata['payment_status'] ?? '') === 'cash_on_delivery_unpaid'
             || (strtolower((string) ($metadata['payment_method'] ?? '')) === 'cod'
                 && (string) ($metadata['payment_confirmed'] ?? 'no') !== 'yes');
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private static function paymentBadge(array $metadata): string
+    {
+        $notice = trim((string) ($metadata['payment_notice'] ?? ''));
+        if ($notice !== '' && in_array((string) ($metadata['payment_badge'] ?? ''), ['unpaid', 'paid'], true)) {
+            return $notice;
+        }
+        return self::isUnpaidOnDelivery($metadata) ? 'NIEOPŁACONE — płatność przy odbiorze' : '';
     }
 
     private function money(int $minorUnits): string

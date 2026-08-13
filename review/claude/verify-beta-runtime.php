@@ -32,6 +32,7 @@ use Xmods\CommerceDocuments\TaxRate;
 use Xmods\CommerceDocuments\WooCommerce\CodOrderPolicy;
 use Xmods\CommerceDocuments\WooCommerce\NativeOrderAdapter;
 use Xmods\CommerceDocuments\WooCommerce\OrderData;
+use Xmods\CommerceDocuments\WooCommerce\OrderConfirmationPolicy;
 use Xmods\CommerceDocuments\WooCommerce\OrderMapper;
 
 $pass = 0;
@@ -92,6 +93,24 @@ $completed = new OrderData(
     Language::fromTag('pl-PL'), $seller, $buyer, [$item], 'cod'
 );
 $check('completed COD is rejected to avoid a false unpaid notice', $policy->documentTypeFor($completed) === null);
+
+$checkoutPolicy = new OrderConfirmationPolicy(['on-hold']);
+$checkoutOrder = new OrderData(
+    '47', 'on-hold', '2026-08-13T10:00:00+00:00', '', $currency,
+    Language::fromTag('pl-PL'), $seller, $buyer, [$item], 'bacs'
+);
+$checkoutRequest = (new OrderMapper())->map($checkoutOrder, $checkoutPolicy, '2026-08-13T10:00:01+00:00');
+$check('checkout status yields an unpaid order confirmation', $checkoutRequest->type->value() === 'order_confirmation');
+$check('checkout confirmation has an unpaid badge', ($checkoutRequest->metadata['payment_badge'] ?? '') === 'unpaid');
+
+$paymentPolicy = new \Xmods\CommerceDocuments\WooCommerce\PaidOrderPolicy(['processing']);
+$paymentOrder = new OrderData(
+    '47', 'processing', '2026-08-13T10:00:00+00:00', '2026-08-13T10:02:00+00:00', $currency,
+    Language::fromTag('pl-PL'), $seller, $buyer, [$item], 'bacs'
+);
+$paymentRequest = (new OrderMapper())->map($paymentOrder, $paymentPolicy, '2026-08-13T10:02:01+00:00');
+$check('confirmed payment yields a separate payment confirmation', $paymentRequest->type->value() === 'payment_confirmation');
+$check('payment confirmation has a paid badge', ($paymentRequest->metadata['payment_badge'] ?? '') === 'paid');
 
 $native = (new NativeOrderAdapter($seller, Language::fromTag('pl-PL'), 2))->map(new class {
     public function get_id(): int { return 45; }
@@ -191,11 +210,21 @@ $check('unresolvable WooCommerce rate ID is rejected instead of derived', (stati
 \WC_Tax::$rates[1] = '23.0000%';
 
 $adminSource = file_get_contents($root . '/packages/woocommerce/src/AdminController.php');
+$pluginSource = file_get_contents($root . '/packages/woocommerce/src/Plugin.php');
 $check(
-    'admin automation control writes the same option read by the order hook',
+    'admin writes both independent automation options',
     is_string($adminSource)
         && strpos($adminSource, "register_setting('commerce_documents', 'commerce_documents_wc_order_confirmation_enabled'") !== false
+        && strpos($adminSource, "register_setting('commerce_documents', 'commerce_documents_wc_payment_confirmation_enabled'") !== false
         && strpos($adminSource, 'commerce_documents_wc_shadow_enabled') === false
+);
+$check(
+    'checkout and status hooks evaluate the matching confirmation policies',
+    is_string($pluginSource)
+        && strpos($pluginSource, "woocommerce_checkout_order_processed', [self::class, 'observeCheckoutOrder'") !== false
+        && strpos($pluginSource, "get_option(\n            'commerce_documents_wc_order_confirmation_enabled'") !== false
+        && strpos($pluginSource, 'generateOrderConfirmationForOrder($order)') !== false
+        && strpos($pluginSource, 'generatePaymentConfirmationForOrder($order)') !== false
 );
 
 $pdf = (new BasicPdfRenderer(2))->render($snapshot);

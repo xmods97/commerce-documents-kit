@@ -9,7 +9,7 @@ use Xmods\CommerceDocuments\DocumentType;
 use Xmods\CommerceDocuments\WooCommerce\Contracts\OrderGenerationPolicy;
 
 /**
- * Produces an internal order confirmation, and only after payment is confirmed.
+ * Produces an internal payment confirmation, and only after payment is confirmed.
  *
  * This policy replaces the status-driven ConfigurableStatusPolicy, which could
  * emit `invoice` and `proforma`. Those are fiscal document types and must not be
@@ -51,7 +51,7 @@ final class PaidOrderPolicy implements OrderGenerationPolicy
         array $paidStatuses = self::DEFAULT_PAID_STATUSES,
         string $codPolicy = self::COD_POLICY_NEVER,
         array $offlineMethods = [],
-        string $name = 'paid-order-confirmation',
+        string $name = 'payment-confirmation',
         int $version = 1
     ) {
         if (trim($name) === '' || $version < 1) {
@@ -75,7 +75,7 @@ final class PaidOrderPolicy implements OrderGenerationPolicy
     public function documentTypeFor(OrderData $order): ?DocumentType
     {
         return $this->isPaid($order)
-            ? DocumentType::fromString(DocumentType::ORDER_CONFIRMATION)
+            ? DocumentType::fromString(DocumentType::PAYMENT_CONFIRMATION)
             : null;
     }
 
@@ -106,6 +106,8 @@ final class PaidOrderPolicy implements OrderGenerationPolicy
             'payment_method' => $order->paymentMethod,
             'payment_confirmed' => $this->isPaid($order) ? 'yes' : 'no',
             'payment_status' => $order->paidAt !== '' ? 'gateway_confirmed' : 'no_payment_date',
+            'payment_badge' => 'paid',
+            'payment_notice' => 'OPŁACONE — płatność potwierdzona',
             'cod_policy' => $this->codPolicy,
         ];
     }

@@ -55,14 +55,22 @@ final class AdminSettings
                 ],
             ],
             'language' => $language,
-            // Only paid-class statuses drive generation now. The proforma/invoice
-            // status matrices are gone: those types are issued manually elsewhere.
-            'paid_statuses' => $cleanStatuses(
-                $input['paid_statuses'] ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES
+            // The first confirmation is issued at checkout; the second only
+            // after WooCommerce has confirmed payment. Their status matrices
+            // are intentionally independent.
+            'order_confirmation_statuses' => $cleanStatuses(
+                $input['order_confirmation_statuses']
+                    ?? $input['paid_statuses']
+                    ?? ['pending', 'on-hold', 'processing']
+            ),
+            'payment_confirmation_statuses' => $cleanStatuses(
+                $input['payment_confirmation_statuses']
+                    ?? $input['paid_statuses']
+                    ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES
             ),
             'cod_policy' => $codPolicy,
             'cod_offline_methods' => $offlineMethods,
-            'policy_name' => 'paid-order-confirmation',
+            'policy_name' => 'payment-confirmation',
             'policy_version' => 1,
         ];
     }
@@ -106,6 +114,10 @@ final class AdminSettings
             && in_array((string) ($settings['language'] ?? ''), ['pl-PL', 'en'], true)
             && trim((string) ($settings['policy_name'] ?? '')) !== ''
             && (int) ($settings['policy_version'] ?? 0) >= 1
-            && (array) ($settings['paid_statuses'] ?? []) !== [];
+            && (array) (
+                $settings['order_confirmation_statuses']
+                    ?? $settings['paid_statuses']
+                    ?? []
+            ) !== [];
     }
 }

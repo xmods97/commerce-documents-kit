@@ -31,8 +31,9 @@ final class AdminSettingsTest extends TestCase
 
         self::assertSame('Seller', $settings['seller']['name']);
         self::assertSame('PL', $settings['seller']['address']['country_code']);
-        self::assertSame(['processing'], $settings['paid_statuses']);
-        self::assertSame('paid-order-confirmation', $settings['policy_name']);
+        self::assertSame(['processing'], $settings['order_confirmation_statuses']);
+        self::assertSame(['processing'], $settings['payment_confirmation_statuses']);
+        self::assertSame('payment-confirmation', $settings['policy_name']);
         self::assertSame(1, $settings['policy_version']);
         self::assertTrue(AdminSettings::isComplete($settings));
     }

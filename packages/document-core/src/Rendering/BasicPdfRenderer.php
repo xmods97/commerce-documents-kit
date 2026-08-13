@@ -65,6 +65,10 @@ final class BasicPdfRenderer implements PdfRenderer
             $ops[] = self::text(self::MARGIN, $y, 'NIEOPŁACONE — płatność przy odbiorze', 10, true);
             $y -= 16;
         }
+        if ((string) ($metadata['payment_badge'] ?? '') === 'paid') {
+            $ops[] = self::text(self::MARGIN, $y, (string) ($metadata['payment_notice'] ?? 'PAID'), 10, true);
+            $y -= 16;
+        }
         $y -= 8;
 
         $partyTop = $y;
@@ -138,7 +142,8 @@ final class BasicPdfRenderer implements PdfRenderer
     /** @param array<string, mixed> $metadata */
     private static function isUnpaid(array $metadata): bool
     {
-        return (string) ($metadata['payment_status'] ?? '') === 'cash_on_delivery_unpaid'
+        return (string) ($metadata['payment_badge'] ?? '') === 'unpaid'
+            || (string) ($metadata['payment_status'] ?? '') === 'cash_on_delivery_unpaid'
             || (strtolower((string) ($metadata['payment_method'] ?? '')) === 'cod'
                 && (string) ($metadata['payment_confirmed'] ?? 'no') !== 'yes');
     }

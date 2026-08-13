@@ -22,6 +22,7 @@ final class DocumentType
     public const RECEIPT = 'receipt';
     public const CREDIT_NOTE = 'credit_note';
     public const ORDER_CONFIRMATION = 'order_confirmation';
+    public const PAYMENT_CONFIRMATION = 'payment_confirmation';
     public const CORRECTION = 'correction';
 
     /** @var string */
@@ -42,13 +43,13 @@ final class DocumentType
 
     public static function values(): array
     {
-        return [self::QUOTE, self::PROFORMA, self::INVOICE, self::RECEIPT, self::CREDIT_NOTE, self::ORDER_CONFIRMATION, self::CORRECTION];
+        return [self::QUOTE, self::PROFORMA, self::INVOICE, self::RECEIPT, self::CREDIT_NOTE, self::ORDER_CONFIRMATION, self::PAYMENT_CONFIRMATION, self::CORRECTION];
     }
 
     /** Types a new document may be created with. */
     public static function issuableValues(): array
     {
-        return [self::ORDER_CONFIRMATION, self::CORRECTION];
+        return [self::ORDER_CONFIRMATION, self::PAYMENT_CONFIRMATION, self::CORRECTION];
     }
 
     public function isIssuable(): bool

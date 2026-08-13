@@ -45,7 +45,7 @@ final class ReviewFixesTest extends TestCase
         $type = $policy->documentTypeFor($this->order('processing', '2026-08-11T10:00:00+00:00', 'stripe'));
 
         self::assertNotNull($type);
-        self::assertSame(DocumentType::ORDER_CONFIRMATION, $type->value());
+        self::assertSame(DocumentType::PAYMENT_CONFIRMATION, $type->value());
     }
 
     public function testCashOnDeliveryOnlyCountsWhenTheGatewayIsExplicitlyEnrolled(): void

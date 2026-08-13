@@ -32,6 +32,7 @@ final class AdminController
         add_action('admin_menu', [self::class, 'menu']);
         add_action('admin_init', [self::class, 'registerSettings']);
         add_action('admin_post_commerce_documents_generate', [self::class, 'generate']);
+        add_action('admin_post_commerce_documents_generate_order_confirmation', [self::class, 'generateOrderConfirmation']);
         add_action('admin_post_commerce_documents_generate_cod', [self::class, 'generateCod']);
         add_action('admin_post_commerce_documents_view', [self::class, 'view']);
         // Preview only: an administrator asking to see one document. It is not
@@ -77,6 +78,13 @@ final class AdminController
             },
             'default' => false,
         ]);
+        register_setting('commerce_documents', 'commerce_documents_wc_payment_confirmation_enabled', [
+            'type' => 'boolean',
+            'sanitize_callback' => static function ($value): bool {
+                return (string) $value === '1';
+            },
+            'default' => false,
+        ]);
     }
 
     public static function page(): void
@@ -95,10 +103,20 @@ final class AdminController
             }
         );
         $address = (array) ($seller['address'] ?? []);
-        $paidStatuses = (array) ($settings['paid_statuses'] ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES);
+        $orderConfirmationStatuses = (array) (
+            $settings['order_confirmation_statuses']
+                ?? $settings['paid_statuses']
+                ?? ['pending', 'on-hold', 'processing']
+        );
+        $paymentConfirmationStatuses = (array) (
+            $settings['payment_confirmation_statuses']
+                ?? $settings['paid_statuses']
+                ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES
+        );
         $codPolicy = (string) ($settings['cod_policy'] ?? PaidOrderPolicy::COD_POLICY_NEVER);
         $offlineMethods = implode(', ', (array) ($settings['cod_offline_methods'] ?? []));
         $enabled = (string) get_option('commerce_documents_wc_order_confirmation_enabled', '0') === '1';
+        $paymentEnabled = (string) get_option('commerce_documents_wc_payment_confirmation_enabled', '0') === '1';
         $statuses = function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [];
         $search = isset($_GET['cdk_search']) ? sanitize_text_field(wp_unslash($_GET['cdk_search'])) : '';
         $documents = self::documents($search);
@@ -116,7 +134,7 @@ final class AdminController
             . '<h1>Commerce Documents</h1>'
             . '<p>Internal order confirmations, protected snapshots and safe local previews.</p></div>'
             . '<span class="cdk-status ' . ($enabled ? 'is-enabled' : 'is-disabled') . '">'
-            . ($enabled ? 'Automatic paid confirmations enabled' : 'Automatic generation paused')
+            . ($enabled || $paymentEnabled ? 'Automatic document rules enabled' : 'Automatic generation paused')
             . '</span></section>';
         self::notice();
         echo '<div class="cdk-callout"><strong>Local beta mode.</strong> Documents, PDF previews and sandbox .eml files remain local. '
@@ -152,18 +170,33 @@ final class AdminController
             echo '<option value="' . esc_attr($value) . '" ' . selected($settings['language'] ?? 'pl-PL', $value, false) . '>'
                 . esc_html($label) . '</option>';
         }
-        echo '</select></td></tr></table><hr class="cdk-divider"><h3>Automatic paid confirmations</h3>';
+        echo '</select></td></tr></table><hr class="cdk-divider"><h3>1. Order confirmation — immediately after checkout</h3>';
         echo '<input type="hidden" name="commerce_documents_wc_order_confirmation_enabled" value="0">';
         echo '<label><input type="checkbox" name="commerce_documents_wc_order_confirmation_enabled" value="1" '
-            . checked($enabled, true, false) . '> Automatically create paid order confirmations</label>';
-        echo '<p class="description">Only <strong>order confirmations</strong> are issued after the selected paid status '
-            . 'and a WooCommerce payment date. Fiscal invoices, proformas and COD documents are never generated automatically.</p>';
+            . checked($enabled, true, false) . '> Create an order confirmation when checkout reaches a selected status</label>';
+        echo '<p class="description">This first document does not require a payment date and is stamped <strong>NIEOPŁACONE</strong>. '
+            . 'It is an internal confirmation, not a fiscal invoice.</p>';
         echo '<table class="widefat striped cdk-status-table"><thead><tr>'
-            . '<th>WooCommerce status</th><th>Counts as paid</th></tr></thead><tbody>';
+            . '<th>WooCommerce status</th><th>Create order confirmation</th></tr></thead><tbody>';
         foreach ($statuses as $key => $label) {
             $status = strpos($key, 'wc-') === 0 ? substr($key, 3) : $key;
-            echo '<tr><td>' . esc_html($label) . '</td><td><input type="checkbox" name="commerce_documents_wc_settings[paid_statuses][]" value="'
-                . esc_attr($status) . '" ' . checked(in_array($status, $paidStatuses, true), true, false)
+            echo '<tr><td>' . esc_html($label) . '</td><td><input type="checkbox" name="commerce_documents_wc_settings[order_confirmation_statuses][]" value="'
+                . esc_attr($status) . '" ' . checked(in_array($status, $orderConfirmationStatuses, true), true, false)
+                . '></td></tr>';
+        }
+        echo '</tbody></table>';
+        echo '<h3>2. Payment confirmation — after payment is confirmed</h3>';
+        echo '<input type="hidden" name="commerce_documents_wc_payment_confirmation_enabled" value="0">';
+        echo '<label><input type="checkbox" name="commerce_documents_wc_payment_confirmation_enabled" value="1" '
+            . checked($paymentEnabled, true, false) . '> Create a payment confirmation when WooCommerce confirms payment</label>';
+        echo '<p class="description">Requires both a selected status and a WooCommerce payment date. The document is stamped '
+            . '<strong>OPŁACONE</strong>.</p>';
+        echo '<table class="widefat striped cdk-status-table"><thead><tr>'
+            . '<th>WooCommerce status</th><th>Create payment confirmation</th></tr></thead><tbody>';
+        foreach ($statuses as $key => $label) {
+            $status = strpos($key, 'wc-') === 0 ? substr($key, 3) : $key;
+            echo '<tr><td>' . esc_html($label) . '</td><td><input type="checkbox" name="commerce_documents_wc_settings[payment_confirmation_statuses][]" value="'
+                . esc_attr($status) . '" ' . checked(in_array($status, $paymentConfirmationStatuses, true), true, false)
                 . '></td></tr>';
         }
         echo '</tbody></table>';
@@ -172,7 +205,7 @@ final class AdminController
             . esc_attr(PaidOrderPolicy::COD_POLICY_NEVER) . '" '
             . checked($codPolicy, PaidOrderPolicy::COD_POLICY_NEVER, false)
             . '> Never treat as paid (recommended — no payment date exists)</label><br>'
-            . '<p><strong>COD is manual only.</strong> It is never treated as paid by the automatic status hook. Use the separate COD action below to create an unpaid order confirmation.</p>'
+            . '<p><strong>COD is manual only.</strong> It never becomes a payment confirmation through the automatic status hook. Use the separate COD action below to create an unpaid order confirmation.</p>'
             . '<p><input class="regular-text" type="text" name="commerce_documents_wc_settings[cod_offline_methods]" value="'
             . esc_attr($offlineMethods) . '" placeholder="cod, bacs"></p>'
             . '<p class="description">WooCommerce never records a payment date for offline gateways, so they are '
@@ -183,7 +216,13 @@ final class AdminController
 
         echo '<section class="cdk-card cdk-quick-actions"><div class="cdk-card__head"><div><h2>Quick actions</h2>'
             . '<p>Use these only to create a document for an existing order. Existing immutable documents are never overwritten.</p></div></div>'
-            . '<div class="cdk-action-grid"><div><h3>Paid order</h3><p>Create an internal order confirmation only when WooCommerce has a payment date.</p>'
+            . '<div class="cdk-action-grid"><div><h3>Order created</h3><p>Create an unpaid order confirmation for an eligible order that has no WooCommerce payment date.</p>'
+            . '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+        echo '<input type="hidden" name="action" value="commerce_documents_generate_order_confirmation">';
+        wp_nonce_field('commerce_documents_generate_order_confirmation');
+        echo '<label for="cdk-order-created">Order ID</label><input id="cdk-order-created" type="number" min="1" required name="order_id"> ';
+        submit_button('Create unpaid confirmation', 'secondary', 'submit', false);
+        echo '</form></div><div><h3>Payment confirmed</h3><p>Create a separate confirmation only when WooCommerce has recorded a payment date.</p>'
             . '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
         echo '<input type="hidden" name="action" value="commerce_documents_generate">';
         wp_nonce_field('commerce_documents_generate');
@@ -402,6 +441,22 @@ final class AdminController
         header('X-Content-Type-Options: nosniff');
         echo $pdf;
         exit;
+    }
+
+    public static function generateOrderConfirmation(): void
+    {
+        self::authorize('commerce_documents_generate_order_confirmation');
+        $orderId = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
+        $order = $orderId > 0 && function_exists('wc_get_order') ? wc_get_order($orderId) : false;
+        if (!$order) {
+            self::redirect('invalid_order');
+        }
+        try {
+            Plugin::generateOrderConfirmationForOrder($order);
+            self::redirect('generated');
+        } catch (Throwable $error) {
+            self::redirect('failed', $error->getMessage());
+        }
     }
 
     /**
@@ -795,7 +850,7 @@ final class AdminController
     private static function styles(): void
     {
         echo '<style>
-        .cdk-admin{max-width:1240px}.cdk-admin h1,.cdk-admin h2,.cdk-admin h3{margin-top:0;color:#172033}.cdk-admin h2{font-size:20px}.cdk-admin h3{font-size:15px;margin-bottom:8px}.cdk-hero{display:flex;gap:24px;justify-content:space-between;align-items:center;margin:18px 0 16px;padding:25px 28px;border-radius:12px;background:linear-gradient(120deg,#0f2744,#123d66);color:#fff}.cdk-hero h1{margin:2px 0 7px;color:#fff;font-size:28px}.cdk-hero p{margin:0;color:#d7e8f7}.cdk-eyebrow{text-transform:uppercase;letter-spacing:.08em;font-size:11px;font-weight:700}.cdk-status{padding:8px 11px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}.cdk-status.is-enabled{background:#d8f3e5;color:#075a31}.cdk-status.is-disabled{background:#fff0d8;color:#8a4b00}.cdk-callout{margin:0 0 18px;padding:13px 16px;border-left:4px solid #00a8a8;background:#edf8f8;color:#24404a}.cdk-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}.cdk-summary__card,.cdk-card{background:#fff;border:1px solid #dbe3ea;border-radius:10px;box-shadow:0 1px 2px rgba(15,39,68,.04)}.cdk-summary__card{padding:15px}.cdk-summary__card span,.cdk-summary__card small{display:block;color:#667085;font-size:12px}.cdk-summary__card strong{display:block;margin:7px 0;color:#172033;font-size:21px}.cdk-card{padding:22px;margin:0 0 18px}.cdk-card__head{display:flex;gap:20px;justify-content:space-between;align-items:flex-start;margin-bottom:18px}.cdk-card__head p{margin:4px 0 0;color:#667085}.cdk-choice-row{display:flex;gap:20px;flex-wrap:wrap}.cdk-choice-row br{display:none}.cdk-divider{border:0;border-top:1px solid #e5e7eb;margin:24px 0}.cdk-status-table{max-width:760px;margin:14px 0}.cdk-quick-actions{background:linear-gradient(180deg,#fff,#f8fbfd)}.cdk-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.cdk-action-grid>div{padding:17px;border:1px solid #dbe7ef;border-radius:8px;background:#fff}.cdk-action-grid p{min-height:36px;color:#526172}.cdk-action-grid label{font-weight:600;margin-right:8px}.cdk-action-grid input[type=number]{width:104px}.cdk-search{display:flex;gap:8px;align-items:center}.cdk-search input{min-width:280px}.cdk-migration{margin:0 0 16px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc}.cdk-migration summary{cursor:pointer;font-weight:600;color:#334155}.cdk-migration[open] summary{margin-bottom:12px}.cdk-table-wrap{overflow-x:auto}.cdk-documents th{white-space:nowrap}.cdk-documents td{vertical-align:top}.cdk-badge{display:inline-block;padding:3px 7px;border-radius:99px;font-size:11px;font-weight:700}.cdk-badge--issued{background:#ddf7e6;color:#086236}.cdk-badge--replaced{background:#fff0d8;color:#8a4b00}.cdk-badge--unreadable{background:#fde2e1;color:#a12622}.cdk-documents td small{display:block;margin-top:4px;color:#667085;word-break:break-all}.cdk-audit{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:#edf2f7;font-weight:700}.cdk-actions{min-width:280px}.cdk-actions form{display:inline-block;margin:0 0 6px 6px}.cdk-actions input[type=text]{max-width:155px}.cdk-empty{padding:24px;border:1px dashed #b7c7d5;border-radius:8px;text-align:center;color:#526172}@media(max-width:782px){.cdk-hero,.cdk-card__head{align-items:flex-start;flex-direction:column}.cdk-summary,.cdk-action-grid{grid-template-columns:1fr}.cdk-search{width:100%;flex-wrap:wrap}.cdk-search input{width:100%;min-width:0}.cdk-actions{min-width:250px}}
+        .cdk-admin{max-width:1240px}.cdk-admin h1,.cdk-admin h2,.cdk-admin h3{margin-top:0;color:#172033}.cdk-admin h2{font-size:20px}.cdk-admin h3{font-size:15px;margin-bottom:8px}.cdk-hero{display:flex;gap:24px;justify-content:space-between;align-items:center;margin:18px 0 16px;padding:25px 28px;border-radius:12px;background:linear-gradient(120deg,#0f2744,#123d66);color:#fff}.cdk-hero h1{margin:2px 0 7px;color:#fff;font-size:28px}.cdk-hero p{margin:0;color:#d7e8f7}.cdk-eyebrow{text-transform:uppercase;letter-spacing:.08em;font-size:11px;font-weight:700}.cdk-status{padding:8px 11px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}.cdk-status.is-enabled{background:#d8f3e5;color:#075a31}.cdk-status.is-disabled{background:#fff0d8;color:#8a4b00}.cdk-callout{margin:0 0 18px;padding:13px 16px;border-left:4px solid #00a8a8;background:#edf8f8;color:#24404a}.cdk-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}.cdk-summary__card,.cdk-card{background:#fff;border:1px solid #dbe3ea;border-radius:10px;box-shadow:0 1px 2px rgba(15,39,68,.04)}.cdk-summary__card{padding:15px}.cdk-summary__card span,.cdk-summary__card small{display:block;color:#667085;font-size:12px}.cdk-summary__card strong{display:block;margin:7px 0;color:#172033;font-size:21px}.cdk-card{padding:22px;margin:0 0 18px}.cdk-card__head{display:flex;gap:20px;justify-content:space-between;align-items:flex-start;margin-bottom:18px}.cdk-card__head p{margin:4px 0 0;color:#667085}.cdk-choice-row{display:flex;gap:20px;flex-wrap:wrap}.cdk-choice-row br{display:none}.cdk-divider{border:0;border-top:1px solid #e5e7eb;margin:24px 0}.cdk-status-table{max-width:760px;margin:14px 0}.cdk-quick-actions{background:linear-gradient(180deg,#fff,#f8fbfd)}.cdk-action-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.cdk-action-grid>div{padding:17px;border:1px solid #dbe7ef;border-radius:8px;background:#fff}.cdk-action-grid p{min-height:36px;color:#526172}.cdk-action-grid label{font-weight:600;margin-right:8px}.cdk-action-grid input[type=number]{width:104px}.cdk-search{display:flex;gap:8px;align-items:center}.cdk-search input{min-width:280px}.cdk-migration{margin:0 0 16px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc}.cdk-migration summary{cursor:pointer;font-weight:600;color:#334155}.cdk-migration[open] summary{margin-bottom:12px}.cdk-table-wrap{overflow-x:auto}.cdk-documents th{white-space:nowrap}.cdk-documents td{vertical-align:top}.cdk-badge{display:inline-block;padding:3px 7px;border-radius:99px;font-size:11px;font-weight:700}.cdk-badge--issued{background:#ddf7e6;color:#086236}.cdk-badge--replaced{background:#fff0d8;color:#8a4b00}.cdk-badge--unreadable{background:#fde2e1;color:#a12622}.cdk-documents td small{display:block;margin-top:4px;color:#667085;word-break:break-all}.cdk-audit{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:#edf2f7;font-weight:700}.cdk-actions{min-width:280px}.cdk-actions form{display:inline-block;margin:0 0 6px 6px}.cdk-actions input[type=text]{max-width:155px}.cdk-empty{padding:24px;border:1px dashed #b7c7d5;border-radius:8px;text-align:center;color:#526172}@media(max-width:782px){.cdk-hero,.cdk-card__head{align-items:flex-start;flex-direction:column}.cdk-summary,.cdk-action-grid{grid-template-columns:1fr}.cdk-search{width:100%;flex-wrap:wrap}.cdk-search input{width:100%;min-width:0}.cdk-actions{min-width:250px}}
         </style>';
     }
 

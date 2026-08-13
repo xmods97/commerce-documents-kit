@@ -28,6 +28,7 @@ final class Plugin
     public static function boot(): void
     {
         add_action('init', [self::class, 'loadTranslations']);
+        add_action('woocommerce_checkout_order_processed', [self::class, 'observeCheckoutOrder'], 20, 3);
         add_action('woocommerce_order_status_changed', [self::class, 'observeOrderStatus'], 10, 4);
         if (is_admin()) {
             AdminController::boot();
@@ -61,21 +62,71 @@ final class Plugin
             self::VERSION
         );
 
-        // v1 is deliberately disarmed until a paid-order policy is implemented.
-        // Never reinterpret legacy status selections as permission to generate.
-        if ((string) get_option('commerce_documents_wc_order_confirmation_enabled', '0') !== '1') {
+        $orderConfirmationEnabled = (string) get_option(
+            'commerce_documents_wc_order_confirmation_enabled',
+            '0'
+        ) === '1';
+        $paymentConfirmationEnabled = (string) get_option(
+            'commerce_documents_wc_payment_confirmation_enabled',
+            '0'
+        ) === '1';
+        if (!$orderConfirmationEnabled && !$paymentConfirmationEnabled) {
             return;
         }
 
+        // Gateways such as BACS set on-hold after checkout_order_processed.
+        // Re-evaluate the unpaid policy here as well; source/type idempotency
+        // makes the checkout and status hooks safe to run in either order.
+        if ($orderConfirmationEnabled) {
+            try {
+                self::generateOrderConfirmationForOrder($order);
+            } catch (Throwable $error) {
+                error_log('Commerce Documents order confirmation failed: ' . $error->getMessage());
+                do_action('commerce_documents_generation_failed', $orderId, $error);
+            }
+        }
+
+        if ($paymentConfirmationEnabled) {
+            try {
+                self::generatePaymentConfirmationForOrder($order);
+            } catch (Throwable $error) {
+                error_log('Commerce Documents payment confirmation failed: ' . $error->getMessage());
+                do_action('commerce_documents_generation_failed', $orderId, $error);
+            }
+        }
+    }
+
+    /** @param mixed $postedData @param mixed $order */
+    public static function observeCheckoutOrder(int $orderId, $postedData, $order): void
+    {
+        if ((string) get_option('commerce_documents_wc_order_confirmation_enabled', '0') !== '1') {
+            return;
+        }
+        if (!is_object($order) && function_exists('wc_get_order')) {
+            $order = wc_get_order($orderId);
+        }
+        if (!is_object($order)) {
+            return;
+        }
         try {
-            self::generateForOrder($order);
+            self::generateOrderConfirmationForOrder($order);
         } catch (Throwable $error) {
-            error_log('Commerce Documents shadow generation failed: ' . $error->getMessage());
+            error_log('Commerce Documents checkout confirmation failed: ' . $error->getMessage());
             do_action('commerce_documents_generation_failed', $orderId, $error);
         }
     }
 
     public static function generateForOrder($order): DocumentSnapshot
+    {
+        return self::generatePaymentConfirmationForOrder($order);
+    }
+
+    public static function generateOrderConfirmationForOrder($order): DocumentSnapshot
+    {
+        return self::generateWithPolicy($order, self::orderConfirmationPolicy());
+    }
+
+    public static function generatePaymentConfirmationForOrder($order): DocumentSnapshot
     {
         return self::generateWithPolicy($order, self::paidPolicy());
     }
@@ -159,13 +210,30 @@ final class Plugin
         $settings = get_option('commerce_documents_wc_settings', []);
         $settings = is_array($settings) ? $settings : [];
         return new PaidOrderPolicy(
-            (array) ($settings['paid_statuses'] ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES),
+            (array) (
+                $settings['payment_confirmation_statuses']
+                    ?? $settings['paid_statuses']
+                    ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES
+            ),
             // COD is never an automatic paid document. Its separate manual
             // action uses CodOrderPolicy and stamps the unpaid notice.
             PaidOrderPolicy::COD_POLICY_NEVER,
             [],
-            (string) ($settings['policy_name'] ?? 'paid-order-confirmation'),
+            'payment-confirmation',
             (int) ($settings['policy_version'] ?? 1)
+        );
+    }
+
+    private static function orderConfirmationPolicy(): OrderConfirmationPolicy
+    {
+        $settings = get_option('commerce_documents_wc_settings', []);
+        $settings = is_array($settings) ? $settings : [];
+        return new OrderConfirmationPolicy(
+            (array) (
+                $settings['order_confirmation_statuses']
+                    ?? $settings['paid_statuses']
+                    ?? ['pending', 'on-hold', 'processing']
+            )
         );
     }
 }
