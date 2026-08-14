@@ -124,6 +124,12 @@ final class AdminController
         $resolvedSettings = $settings;
         $resolvedSettings['seller'] = $seller;
         $settingsComplete = AdminSettings::isComplete($resolvedSettings, $enabled, $paymentEnabled);
+        $automationEnabled = $enabled || $paymentEnabled;
+        $sellerReadiness = !$automationEnabled
+            ? ['Paused', 'Automatic document rules are disabled']
+            : ($settingsComplete
+                ? ['Ready', 'Required fields are complete']
+                : ['Needs setup', 'Complete seller and enabled document settings']);
         $readableCount = count(array_filter($documents, static function (array $document): bool {
             return !empty($document['readable']);
         }));
@@ -142,7 +148,7 @@ final class AdminController
         echo '<div class="cdk-summary">'
             . self::summaryCard('Documents shown', (string) count($documents), $search === '' ? 'Latest protected records' : 'Filtered result')
             . self::summaryCard('Readable snapshots', (string) $readableCount, 'Encrypted and available to preview')
-            . self::summaryCard('Seller profile', $settingsComplete ? 'Ready' : 'Needs setup', $settingsComplete ? 'Required fields are complete' : 'Complete seller and paid-status settings')
+            . self::summaryCard('Seller profile', $sellerReadiness[0], $sellerReadiness[1])
             . self::summaryCard('Database schema', (string) $migration['installed_version'] . ' / ' . (string) $migration['target_version'], $migration['upgrade_required'] ? 'Migration required' : 'Current')
             . '</div>';
 

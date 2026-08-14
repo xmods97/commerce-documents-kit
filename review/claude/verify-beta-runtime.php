@@ -269,6 +269,7 @@ $check(
         && strpos($adminSource, 'payment_confirmation_statuses_present') !== false
         && strpos($adminSource, 'AdminSettings::isComplete($resolvedSettings, $enabled, $paymentEnabled)') !== false
         && strpos($pluginSource, 'AdminSettings::isComplete($resolvedSettings, $orderConfirmationEnabled, $paymentConfirmationEnabled)') !== false
+        && strpos($adminSource, "['Paused', 'Automatic document rules are disabled']") !== false
 );
 $check(
     'checkout and status hooks evaluate the matching confirmation policies',
