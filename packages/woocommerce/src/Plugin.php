@@ -167,7 +167,11 @@ final class Plugin
         );
         $resolvedSettings = $settings;
         $resolvedSettings['seller'] = $seller;
-        if (!AdminSettings::isComplete($resolvedSettings)) {
+        $paymentConfirmationEnabled = (string) get_option(
+            'commerce_documents_wc_payment_confirmation_enabled',
+            '0'
+        ) === '1';
+        if (!AdminSettings::isComplete($resolvedSettings, $paymentConfirmationEnabled)) {
             throw new \RuntimeException('Complete Commerce Documents settings before generating documents.');
         }
         $address = (array) ($seller['address'] ?? []);

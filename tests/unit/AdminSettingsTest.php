@@ -76,6 +76,19 @@ final class AdminSettingsTest extends TestCase
         self::assertFalse(AdminSettings::isComplete($settings));
     }
 
+    public function testExplicitlyEmptyStatusMatricesAreNotReplacedWithDefaults(): void
+    {
+        $settings = AdminSettings::sanitize([
+            'order_confirmation_statuses_present' => '1',
+            'payment_confirmation_statuses_present' => '1',
+            'order_confirmation_statuses' => [],
+            'payment_confirmation_statuses' => [],
+        ], ['pending', 'processing', 'completed']);
+
+        self::assertSame([], $settings['order_confirmation_statuses']);
+        self::assertSame([], $settings['payment_confirmation_statuses']);
+    }
+
     public function testUnknownLanguageFallsBackToPolish(): void
     {
         $settings = AdminSettings::sanitize(['language' => 'de'], []);

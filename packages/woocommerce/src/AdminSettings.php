@@ -37,6 +37,21 @@ final class AdminSettings
             return $method !== '' && preg_match('/^[a-z0-9_\-]{1,64}$/D', $method) === 1;
         }));
 
+        $orderConfirmationStatuses = array_key_exists('order_confirmation_statuses_present', $input)
+            ? $cleanStatuses($input['order_confirmation_statuses'] ?? [])
+            : $cleanStatuses(
+                $input['order_confirmation_statuses']
+                    ?? $input['paid_statuses']
+                    ?? ['pending', 'on-hold', 'processing']
+            );
+        $paymentConfirmationStatuses = array_key_exists('payment_confirmation_statuses_present', $input)
+            ? $cleanStatuses($input['payment_confirmation_statuses'] ?? [])
+            : $cleanStatuses(
+                $input['payment_confirmation_statuses']
+                    ?? $input['paid_statuses']
+                    ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES
+            );
+
         return [
             'seller_source' => ($input['seller_source'] ?? '') === 'woocommerce'
                 ? 'woocommerce'
@@ -58,16 +73,8 @@ final class AdminSettings
             // The first confirmation is issued at checkout; the second only
             // after WooCommerce has confirmed payment. Their status matrices
             // are intentionally independent.
-            'order_confirmation_statuses' => $cleanStatuses(
-                $input['order_confirmation_statuses']
-                    ?? $input['paid_statuses']
-                    ?? ['pending', 'on-hold', 'processing']
-            ),
-            'payment_confirmation_statuses' => $cleanStatuses(
-                $input['payment_confirmation_statuses']
-                    ?? $input['paid_statuses']
-                    ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES
-            ),
+            'order_confirmation_statuses' => $orderConfirmationStatuses,
+            'payment_confirmation_statuses' => $paymentConfirmationStatuses,
             'cod_policy' => $codPolicy,
             'cod_offline_methods' => $offlineMethods,
             'policy_name' => 'payment-confirmation',
@@ -102,7 +109,7 @@ final class AdminSettings
         ];
     }
 
-    public static function isComplete(array $settings): bool
+    public static function isComplete(array $settings, bool $paymentConfirmationEnabled = true): bool
     {
         $seller = (array) ($settings['seller'] ?? []);
         $address = (array) ($seller['address'] ?? []);
@@ -117,7 +124,8 @@ final class AdminSettings
             && (array) (
                 $settings['order_confirmation_statuses']
                     ?? $settings['paid_statuses']
-                    ?? []
-            ) !== [];
+                ?? []
+            ) !== []
+            && (!$paymentConfirmationEnabled || (array) ($settings['payment_confirmation_statuses'] ?? []) !== []);
     }
 }

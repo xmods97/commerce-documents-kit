@@ -123,7 +123,7 @@ final class AdminController
         $migration = Installer::preflight();
         $resolvedSettings = $settings;
         $resolvedSettings['seller'] = $seller;
-        $settingsComplete = AdminSettings::isComplete($resolvedSettings);
+        $settingsComplete = AdminSettings::isComplete($resolvedSettings, $paymentEnabled);
         $readableCount = count(array_filter($documents, static function (array $document): bool {
             return !empty($document['readable']);
         }));
@@ -177,6 +177,7 @@ final class AdminController
             . checked($enabled, true, false) . '> Create an order confirmation when checkout reaches a selected status</label>';
         echo '<p class="description">This first document does not require a payment date and is stamped <strong>NIEOPŁACONE</strong>. '
             . 'It is an internal confirmation, not a fiscal invoice.</p>';
+        echo '<input type="hidden" name="commerce_documents_wc_settings[order_confirmation_statuses_present]" value="1">';
         echo '<table class="widefat striped cdk-status-table"><thead><tr>'
             . '<th>WooCommerce status</th><th>Create order confirmation</th></tr></thead><tbody>';
         foreach ($statuses as $key => $label) {
@@ -192,6 +193,7 @@ final class AdminController
             . checked($paymentEnabled, true, false) . '> Create a payment confirmation when WooCommerce confirms payment</label>';
         echo '<p class="description">Requires both a selected status and a WooCommerce payment date. The document is stamped '
             . '<strong>OPŁACONE</strong>.</p>';
+        echo '<input type="hidden" name="commerce_documents_wc_settings[payment_confirmation_statuses_present]" value="1">';
         echo '<table class="widefat striped cdk-status-table"><thead><tr>'
             . '<th>WooCommerce status</th><th>Create payment confirmation</th></tr></thead><tbody>';
         foreach ($statuses as $key => $label) {

@@ -30,6 +30,7 @@ use Xmods\CommerceDocuments\Rendering\HtmlRenderer;
 use Xmods\CommerceDocuments\Rendering\TemplateCatalog;
 use Xmods\CommerceDocuments\TaxRate;
 use Xmods\CommerceDocuments\WooCommerce\CodOrderPolicy;
+use Xmods\CommerceDocuments\WooCommerce\AdminSettings;
 use Xmods\CommerceDocuments\WooCommerce\NativeOrderAdapter;
 use Xmods\CommerceDocuments\WooCommerce\OrderData;
 use Xmods\CommerceDocuments\WooCommerce\OrderConfirmationPolicy;
@@ -132,6 +133,16 @@ try {
     $emptyPaymentStatusesRejected = true;
 }
 $check('empty payment status matrix is rejected loudly', $emptyPaymentStatusesRejected);
+$explicitEmptySettings = AdminSettings::sanitize([
+    'order_confirmation_statuses_present' => '1',
+    'payment_confirmation_statuses_present' => '1',
+    'order_confirmation_statuses' => [],
+    'payment_confirmation_statuses' => [],
+], ['pending', 'on-hold', 'processing', 'completed']);
+$check('explicitly cleared status matrices stay empty after sanitization',
+    ($explicitEmptySettings['order_confirmation_statuses'] ?? null) === []
+        && ($explicitEmptySettings['payment_confirmation_statuses'] ?? null) === []
+);
 
 $native = (new NativeOrderAdapter($seller, Language::fromTag('pl-PL'), 2))->map(new class {
     public function get_id(): int { return 45; }
@@ -239,6 +250,9 @@ $check(
         && strpos($adminSource, "register_setting('commerce_documents', 'commerce_documents_wc_payment_confirmation_enabled'") !== false
         && strpos($adminSource, 'commerce_documents_wc_shadow_enabled') === false
         && strpos($adminSource, 'Payment confirmation is enabled but no statuses are selected.') !== false
+        && strpos($adminSource, 'order_confirmation_statuses_present') !== false
+        && strpos($adminSource, 'payment_confirmation_statuses_present') !== false
+        && strpos($adminSource, 'AdminSettings::isComplete($resolvedSettings, $paymentEnabled)') !== false
 );
 $check(
     'checkout and status hooks evaluate the matching confirmation policies',
