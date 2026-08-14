@@ -123,7 +123,7 @@ final class AdminController
         $migration = Installer::preflight();
         $resolvedSettings = $settings;
         $resolvedSettings['seller'] = $seller;
-        $settingsComplete = AdminSettings::isComplete($resolvedSettings, $paymentEnabled);
+        $settingsComplete = AdminSettings::isComplete($resolvedSettings, $enabled, $paymentEnabled);
         $readableCount = count(array_filter($documents, static function (array $document): bool {
             return !empty($document['readable']);
         }));

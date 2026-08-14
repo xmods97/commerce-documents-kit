@@ -109,7 +109,11 @@ final class AdminSettings
         ];
     }
 
-    public static function isComplete(array $settings, bool $paymentConfirmationEnabled = true): bool
+    public static function isComplete(
+        array $settings,
+        bool $orderConfirmationEnabled = true,
+        bool $paymentConfirmationEnabled = true
+    ): bool
     {
         $seller = (array) ($settings['seller'] ?? []);
         $address = (array) ($seller['address'] ?? []);
@@ -121,11 +125,11 @@ final class AdminSettings
             && in_array((string) ($settings['language'] ?? ''), ['pl-PL', 'en'], true)
             && trim((string) ($settings['policy_name'] ?? '')) !== ''
             && (int) ($settings['policy_version'] ?? 0) >= 1
-            && (array) (
+            && (!$orderConfirmationEnabled || (array) (
                 $settings['order_confirmation_statuses']
                     ?? $settings['paid_statuses']
                 ?? []
-            ) !== []
+            ) !== [])
             && (!$paymentConfirmationEnabled || (array) ($settings['payment_confirmation_statuses'] ?? []) !== []);
     }
 }

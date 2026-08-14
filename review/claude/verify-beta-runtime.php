@@ -143,6 +143,21 @@ $check('explicitly cleared status matrices stay empty after sanitization',
     ($explicitEmptySettings['order_confirmation_statuses'] ?? null) === []
         && ($explicitEmptySettings['payment_confirmation_statuses'] ?? null) === []
 );
+$completeSettings = [
+    'seller' => [
+        'name' => 'GEWARD',
+        'address' => ['line1' => 'Testowa 1', 'postal_code' => '00-001', 'city' => 'Warszawa', 'country_code' => 'PL'],
+    ],
+    'language' => 'pl-PL',
+    'policy_name' => 'payment-confirmation',
+    'policy_version' => 1,
+    'order_confirmation_statuses' => [],
+    'payment_confirmation_statuses' => ['processing'],
+];
+$check('disabled order confirmation does not block enabled payment confirmation',
+    AdminSettings::isComplete($completeSettings, false, true)
+        && !AdminSettings::isComplete($completeSettings, true, true)
+);
 
 $native = (new NativeOrderAdapter($seller, Language::fromTag('pl-PL'), 2))->map(new class {
     public function get_id(): int { return 45; }
@@ -252,7 +267,8 @@ $check(
         && strpos($adminSource, 'Payment confirmation is enabled but no statuses are selected.') !== false
         && strpos($adminSource, 'order_confirmation_statuses_present') !== false
         && strpos($adminSource, 'payment_confirmation_statuses_present') !== false
-        && strpos($adminSource, 'AdminSettings::isComplete($resolvedSettings, $paymentEnabled)') !== false
+        && strpos($adminSource, 'AdminSettings::isComplete($resolvedSettings, $enabled, $paymentEnabled)') !== false
+        && strpos($pluginSource, 'AdminSettings::isComplete($resolvedSettings, $orderConfirmationEnabled, $paymentConfirmationEnabled)') !== false
 );
 $check(
     'checkout and status hooks evaluate the matching confirmation policies',
