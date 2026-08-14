@@ -61,6 +61,9 @@ final class PaidOrderPolicy implements OrderGenerationPolicy
             throw new InvalidArgumentException('Unsupported cash-on-delivery policy.');
         }
         $this->paidStatuses = array_values(array_unique(array_map('strval', $paidStatuses)));
+        if ($this->paidStatuses === []) {
+            throw new InvalidArgumentException('At least one payment confirmation status is required.');
+        }
         $this->codPolicy = $codPolicy;
         $this->offlineMethods = array_values(array_unique(array_map(
             static function ($method): string {
@@ -100,14 +103,19 @@ final class PaidOrderPolicy implements OrderGenerationPolicy
      */
     public function decision(OrderData $order): array
     {
+        $isPaid = $this->isPaid($order);
         return [
             'policy' => $this->name,
             'policy_version' => $this->version,
             'payment_method' => $order->paymentMethod,
-            'payment_confirmed' => $this->isPaid($order) ? 'yes' : 'no',
-            'payment_status' => $order->paidAt !== '' ? 'gateway_confirmed' : 'no_payment_date',
-            'payment_badge' => 'paid',
-            'payment_notice' => 'OPŁACONE — płatność potwierdzona',
+            'payment_confirmed' => $isPaid ? 'yes' : 'no',
+            'payment_status' => $isPaid
+                ? ($order->paidAt !== '' ? 'gateway_confirmed' : 'offline_status_confirmed')
+                : 'not_qualified',
+            'payment_badge' => $isPaid ? 'paid' : 'unpaid',
+            'payment_notice' => $isPaid
+                ? 'OPŁACONE — płatność potwierdzona'
+                : 'NIEOPŁACONE — płatność niepotwierdzona',
             'cod_policy' => $this->codPolicy,
         ];
     }

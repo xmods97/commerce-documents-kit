@@ -201,6 +201,10 @@ final class AdminController
                 . '></td></tr>';
         }
         echo '</tbody></table>';
+        if ($paymentEnabled && $paymentConfirmationStatuses === []) {
+            echo '<div class="notice notice-error inline"><p><strong>Payment confirmation is enabled but no statuses are selected.</strong> '
+                . 'Select at least one status or disable this document type before saving.</p></div>';
+        }
         echo '<table class="form-table"><tr><th>Offline gateways (cash on delivery, bank transfer)</th><td>'
             . '<label><input type="radio" name="commerce_documents_wc_settings[cod_policy]" value="'
             . esc_attr(PaidOrderPolicy::COD_POLICY_NEVER) . '" '

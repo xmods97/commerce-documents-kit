@@ -26,7 +26,7 @@ use Xmods\CommerceDocuments\WordPress\SandboxMailer;
 
 final class ReviewFixesTest extends TestCase
 {
-    // ---- H2/H3: order confirmations only, and only when paid -----------------
+    // ---- H2/H3: payment confirmations only, and only when paid ---------------
 
     public function testUnpaidOrderProducesNoDocument(): void
     {
@@ -39,7 +39,7 @@ final class ReviewFixesTest extends TestCase
         self::assertNull($policy->documentTypeFor($this->order('processing', '', 'cod')));
     }
 
-    public function testPaidOrderProducesAnOrderConfirmationAndNeverAnInvoice(): void
+    public function testPaidOrderProducesAPaymentConfirmationAndNeverAnInvoice(): void
     {
         $policy = new PaidOrderPolicy();
         $type = $policy->documentTypeFor($this->order('processing', '2026-08-11T10:00:00+00:00', 'stripe'));
@@ -68,7 +68,7 @@ final class ReviewFixesTest extends TestCase
         );
         self::assertNotNull($enrolled->documentTypeFor($order));
         self::assertSame('yes', $enrolled->decision($order)['payment_confirmed']);
-        self::assertSame('no_payment_date', $enrolled->decision($order)['payment_status']);
+        self::assertSame('offline_status_confirmed', $enrolled->decision($order)['payment_status']);
     }
 
     // ---- H5: audit chain -----------------------------------------------------

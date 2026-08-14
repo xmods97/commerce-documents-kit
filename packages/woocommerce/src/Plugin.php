@@ -80,6 +80,9 @@ final class Plugin
         if ($orderConfirmationEnabled) {
             try {
                 self::generateOrderConfirmationForOrder($order);
+            } catch (OrderNotEligibleException $expected) {
+                // A selected status can be valid for the other document type;
+                // non-qualification is normal control flow, not an error.
             } catch (Throwable $error) {
                 error_log('Commerce Documents order confirmation failed: ' . $error->getMessage());
                 do_action('commerce_documents_generation_failed', $orderId, $error);
@@ -89,6 +92,8 @@ final class Plugin
         if ($paymentConfirmationEnabled) {
             try {
                 self::generatePaymentConfirmationForOrder($order);
+            } catch (OrderNotEligibleException $expected) {
+                // Payment confirmation also requires the gateway payment date.
             } catch (Throwable $error) {
                 error_log('Commerce Documents payment confirmation failed: ' . $error->getMessage());
                 do_action('commerce_documents_generation_failed', $orderId, $error);
@@ -110,6 +115,8 @@ final class Plugin
         }
         try {
             self::generateOrderConfirmationForOrder($order);
+        } catch (OrderNotEligibleException $expected) {
+            return;
         } catch (Throwable $error) {
             error_log('Commerce Documents checkout confirmation failed: ' . $error->getMessage());
             do_action('commerce_documents_generation_failed', $orderId, $error);

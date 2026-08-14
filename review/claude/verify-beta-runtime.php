@@ -33,6 +33,7 @@ use Xmods\CommerceDocuments\WooCommerce\CodOrderPolicy;
 use Xmods\CommerceDocuments\WooCommerce\NativeOrderAdapter;
 use Xmods\CommerceDocuments\WooCommerce\OrderData;
 use Xmods\CommerceDocuments\WooCommerce\OrderConfirmationPolicy;
+use Xmods\CommerceDocuments\WooCommerce\OrderNotEligibleException;
 use Xmods\CommerceDocuments\WooCommerce\OrderMapper;
 
 $pass = 0;
@@ -111,6 +112,26 @@ $paymentOrder = new OrderData(
 $paymentRequest = (new OrderMapper())->map($paymentOrder, $paymentPolicy, '2026-08-13T10:02:01+00:00');
 $check('confirmed payment yields a separate payment confirmation', $paymentRequest->type->value() === 'payment_confirmation');
 $check('payment confirmation has a paid badge', ($paymentRequest->metadata['payment_badge'] ?? '') === 'paid');
+$unpaidPaymentDecision = $paymentPolicy->decision($checkoutOrder);
+$check('unqualified payment policy decision cannot claim paid',
+    ($unpaidPaymentDecision['payment_confirmed'] ?? '') === 'no'
+        && ($unpaidPaymentDecision['payment_badge'] ?? '') === 'unpaid'
+        && strpos(strtoupper((string) ($unpaidPaymentDecision['payment_notice'] ?? '')), 'NIEOP') === 0
+);
+$notEligibleIsExpected = false;
+try {
+    (new OrderMapper())->map($checkoutOrder, $paymentPolicy, '2026-08-13T10:02:01+00:00');
+} catch (OrderNotEligibleException $expected) {
+    $notEligibleIsExpected = true;
+}
+$check('policy non-qualification is a typed expected outcome', $notEligibleIsExpected);
+$emptyPaymentStatusesRejected = false;
+try {
+    new \Xmods\CommerceDocuments\WooCommerce\PaidOrderPolicy([]);
+} catch (\InvalidArgumentException $expected) {
+    $emptyPaymentStatusesRejected = true;
+}
+$check('empty payment status matrix is rejected loudly', $emptyPaymentStatusesRejected);
 
 $native = (new NativeOrderAdapter($seller, Language::fromTag('pl-PL'), 2))->map(new class {
     public function get_id(): int { return 45; }
@@ -217,6 +238,7 @@ $check(
         && strpos($adminSource, "register_setting('commerce_documents', 'commerce_documents_wc_order_confirmation_enabled'") !== false
         && strpos($adminSource, "register_setting('commerce_documents', 'commerce_documents_wc_payment_confirmation_enabled'") !== false
         && strpos($adminSource, 'commerce_documents_wc_shadow_enabled') === false
+        && strpos($adminSource, 'Payment confirmation is enabled but no statuses are selected.') !== false
 );
 $check(
     'checkout and status hooks evaluate the matching confirmation policies',
@@ -225,6 +247,7 @@ $check(
         && strpos($pluginSource, "get_option(\n            'commerce_documents_wc_order_confirmation_enabled'") !== false
         && strpos($pluginSource, 'generateOrderConfirmationForOrder($order)') !== false
         && strpos($pluginSource, 'generatePaymentConfirmationForOrder($order)') !== false
+        && strpos($pluginSource, 'catch (OrderNotEligibleException $expected)') !== false
 );
 $check(
     'seller fields become editable when manual source is selected',

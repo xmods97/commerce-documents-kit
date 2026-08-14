@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Xmods\CommerceDocuments\WooCommerce;
 
-use RuntimeException;
 use Xmods\CommerceDocuments\Application\GenerationRequest;
 use Xmods\CommerceDocuments\DocumentStatus;
 use Xmods\CommerceDocuments\WooCommerce\Contracts\OrderGenerationPolicy;
@@ -18,7 +17,9 @@ final class OrderMapper
     ): GenerationRequest {
         $type = $policy->documentTypeFor($order);
         if ($type === null) {
-            throw new RuntimeException('This order does not qualify for a document under the active policy.');
+            throw new OrderNotEligibleException(
+                'This order does not qualify for a document under the active policy.'
+            );
         }
 
         // Prefer the gateway's payment date so the document carries the moment the
