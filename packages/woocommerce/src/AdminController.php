@@ -35,9 +35,10 @@ final class AdminController
         add_action('admin_post_commerce_documents_generate_order_confirmation', [self::class, 'generateOrderConfirmation']);
         add_action('admin_post_commerce_documents_generate_cod', [self::class, 'generateCod']);
         add_action('admin_post_commerce_documents_view', [self::class, 'view']);
-        // Preview only: an administrator asking to see one document. It is not
-        // reachable from any order hook, and there is no delivery path behind it.
+        // Read-only PDF access: an administrator previews or downloads one
+        // document. It is not reachable from any order hook or delivery path.
         add_action('admin_post_commerce_documents_preview_pdf', [self::class, 'previewPdf']);
+        add_action('admin_post_commerce_documents_download_pdf', [self::class, 'downloadPdf']);
         add_action('admin_post_commerce_documents_sandbox_email', [self::class, 'sandboxEmail']);
         add_action('admin_post_commerce_documents_migrate', [self::class, 'migrate']);
         add_action('admin_post_commerce_documents_correct', [self::class, 'correct']);
@@ -294,6 +295,13 @@ final class AdminController
                     ),
                     'commerce_documents_preview_pdf_' . $document['document_id']
                 );
+                $downloadPdfUrl = wp_nonce_url(
+                    admin_url(
+                        'admin-post.php?action=commerce_documents_download_pdf&document_id='
+                        . rawurlencode($document['document_id'])
+                    ),
+                    'commerce_documents_download_pdf_' . $document['document_id']
+                );
                 $supersededBy = (string) ($document['superseded_by'] ?? '');
                 $state = $supersededBy !== ''
                     ? '<span class="cdk-badge cdk-badge--replaced">Replaced</span><small>' . esc_html($supersededBy) . '</small>'
@@ -308,6 +316,7 @@ final class AdminController
                     . esc_url($url) . '">View / print</a>';
                 if ($document['readable']) {
                     echo ' <a class="button" target="_blank" href="' . esc_url($pdfUrl) . '">Preview PDF</a>';
+                    echo ' <a class="button" href="' . esc_url($downloadPdfUrl) . '">Download PDF</a>';
                     echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:inline-block;margin-left:6px">'
                         . '<input type="hidden" name="action" value="commerce_documents_sandbox_email">'
                         . '<input type="hidden" name="document_id" value="' . esc_attr($document['document_id']) . '">'
@@ -407,25 +416,30 @@ final class AdminController
     }
 
     /**
-     * Renders one document as a PDF and returns it to the administrator's browser.
+     * Renders one stored snapshot as a PDF and returns it to the administrator.
      *
-     * This is the only place in the plugin that constructs a PDF renderer, and it
-     * is a preview: an administrator clicked a nonce-signed link for a specific
-     * document. Nothing is stored, nothing is queued and nothing is sent — there
-     * is no Mailer here and no order hook reaches this method.
-     *
-     * The logo comes from WordPressLogoProvider, which reads the site's Custom
-     * Logo from the local uploads directory. It never fetches anything, and if
-     * the logo is missing, unsafe or in a format the renderer refuses, it returns
-     * nothing and the document is produced without a logo.
+     * The PDF is deliberately generated on demand rather than stored separately:
+     * the encrypted immutable snapshot is the durable source of truth. Preview
+     * and download are both admin-only, nonce-bound, read-only responses.
      */
     public static function previewPdf(): void
+    {
+        self::streamPdf(false);
+    }
+
+    public static function downloadPdf(): void
+    {
+        self::streamPdf(true);
+    }
+
+    private static function streamPdf(bool $download): void
     {
         if (!current_user_can('manage_woocommerce')) {
             wp_die('Forbidden', '', ['response' => 403]);
         }
         $documentId = isset($_GET['document_id']) ? sanitize_text_field(wp_unslash($_GET['document_id'])) : '';
-        check_admin_referer('commerce_documents_preview_pdf_' . $documentId);
+        $nonceAction = $download ? 'download_pdf' : 'preview_pdf';
+        check_admin_referer('commerce_documents_' . $nonceAction . '_' . $documentId);
 
         $snapshot = self::find($documentId);
         if ($snapshot === null) {
@@ -449,7 +463,7 @@ final class AdminController
 
         nocache_headers();
         header('Content-Type: application/pdf');
-        header('Content-Disposition: inline; filename="' . self::pdfFilename($snapshot) . '"');
+        header('Content-Disposition: ' . ($download ? 'attachment' : 'inline') . '; filename="' . self::pdfFilename($snapshot) . '"');
         header('Content-Length: ' . strlen($pdf));
         header('X-Content-Type-Options: nosniff');
         echo $pdf;
@@ -503,9 +517,11 @@ final class AdminController
             self::redirect('failed', 'The document audit chain is not verified; no sandbox file was created.');
         }
         try {
+            $mailer = new SandboxMailer(self::sandboxMailDirectory(), 'sandbox@example.invalid');
+            $mailer->purgeExpired(self::sandboxRetentionDays());
             $delivery = new DeliverDocument(
                 self::pdfRenderer(),
-                new SandboxMailer(self::sandboxMailDirectory(), 'sandbox@example.invalid'),
+                $mailer,
                 new WpdbEventLogger(
                     $wpdb,
                     $wpdb->prefix . 'commerce_document_events',
@@ -553,6 +569,17 @@ final class AdminController
         }
         return rtrim(sys_get_temp_dir(), "\\/")
             . DIRECTORY_SEPARATOR . 'commerce-documents-sandbox-mail';
+    }
+
+    private static function sandboxRetentionDays(): int
+    {
+        $days = defined('COMMERCE_DOCUMENTS_SANDBOX_RETENTION_DAYS')
+            ? (int) constant('COMMERCE_DOCUMENTS_SANDBOX_RETENTION_DAYS')
+            : 7;
+        if ($days < 1 || $days > 3650) {
+            throw new \RuntimeException('Sandbox retention must be between 1 and 3650 days.');
+        }
+        return $days;
     }
 
     /**

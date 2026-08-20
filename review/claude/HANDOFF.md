@@ -10,14 +10,14 @@ Everything below was re-run and re-read at the time of writing, not recalled.
 
 ## 1. What this branch now is
 
-A document module that can **produce** an order confirmation as a PDF and **capture** it locally as an `.eml`, entirely inside the WordPress admin, driven by an operator clicking a button. It cannot send anything, and no order hook or scheduler can make it act.
+A document module that can **produce** an order confirmation as a PDF and **capture** it locally as an `.eml`, entirely inside the WordPress admin, driven by an operator clicking a button. The encrypted immutable snapshot is the durable document record; PDFs are generated on demand for preview/download. It cannot send anything, and no order hook or scheduler can make it act.
 
 Two admin actions exist, both on `admin_post_*`, both behind `manage_woocommerce` plus a nonce bound to the specific document:
 
 | Action | Does | Does not |
 |---|---|---|
 | `commerce_documents_preview_pdf` | Renders one document and returns it inline as `application/pdf` | Store anything, send anything |
-| `commerce_documents_sandbox_email` | Renders the same PDF and writes one `.eml` to a local directory; records `document.sandbox_stored` | Call `wp_mail`, SMTP, sockets or HTTP |
+| `commerce_documents_sandbox_email` | Renders the same PDF and writes one `.eml` to a local directory; prunes only expired generated captures; records `document.sandbox_stored` | Call `wp_mail`, SMTP, sockets or HTTP |
 
 ## 2. Commits, oldest first
 
@@ -60,7 +60,7 @@ php review/claude/verify-admin-preview.php
 ## 4. Open risks, most important first
 
 1. **No page has ever been rasterised inside this work.** Layout is verified arithmetically — E13 measures every text run and fails if two on a baseline come within 2 pt — but that check exists *because* the first human look found two collisions. Look at a real page after any layout change.
-2. **Captures are never pruned.** Each `.eml` holds the buyer's name, their email address and the whole rendered invoice, and nothing deletes them. Set a retention rule before the sandbox stage runs for any length of time. Deliberately not decided here.
+2. **Sandbox captures are temporary test artifacts.** Each `.eml` holds the buyer's name, their email address and the whole rendered invoice. Generated captures older than 7 days are pruned when the sandbox action is run; the window can be overridden with `COMMERCE_DOCUMENTS_SANDBOX_RETENTION_DAYS` in `wp-config.php` (1–3650). Immutable snapshots and audit events are never pruned.
 3. **The web-root guard depends on `ABSPATH`.** It refuses a capture directory at or inside `realpath(ABSPATH)`. An nginx `alias`, a symlinked docroot or a second docroot outside `ABSPATH` is not covered. The default — a directory under the system temp path — is unaffected.
 4. **No WordPress runtime was ever involved.** Capability checks, nonces, response headers, media lookups and the `wpdb` calls are verified by reading the code and by fixture-backed stand-ins. The C1 persistence fix in particular deserves one confirmation against a real `wpdb`.
 5. **If the site's Custom Logo is an SVG there will be no logo** — deliberately, and the answer is a PNG Custom Logo, not a looser parser. Also: the media library holds a navy-on-light and an inverted white-on-dark family; the inverted one puts a dark block on a white invoice.
@@ -84,6 +84,8 @@ This is the check nobody has run: the flow on a real WordPress. It is written to
 define('COMMERCE_DOCUMENTS_ENCRYPTION_KEY', '<base64 of 32 random bytes>');
 define('COMMERCE_DOCUMENTS_AUDIT_HMAC_KEY', '<a different base64 of 32 random bytes>');
 define('COMMERCE_DOCUMENTS_SANDBOX_MAIL_DIR', 'C:\\cdk-sandbox-mail');
+// Optional: default is 7 days; allowed range is 1–3650.
+define('COMMERCE_DOCUMENTS_SANDBOX_RETENTION_DAYS', 7);
 ```
 
 Generate each key separately and never reuse one for the other:

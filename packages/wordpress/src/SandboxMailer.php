@@ -152,6 +152,50 @@ final class SandboxMailer implements StagedMailer
         return $target;
     }
 
+    /**
+     * Remove only expired captures created by this mailer.
+     *
+     * The durable document snapshot and its audit events are unrelated to this
+     * test artifact and are never touched. The filename allow-list prevents an
+     * operator's other files from being treated as sandbox mail.
+     */
+    public function purgeExpired(int $retentionDays): int
+    {
+        if ($retentionDays < 1 || $retentionDays > 3650) {
+            throw new InvalidArgumentException('Sandbox retention must be between 1 and 3650 days.');
+        }
+
+        $cutoff = time() - ($retentionDays * 86400);
+        $deleted = 0;
+        try {
+            $iterator = new \DirectoryIterator($this->directory);
+            foreach ($iterator as $entry) {
+                if ($entry->isDot() || $entry->isLink() || !$entry->isFile()) {
+                    continue;
+                }
+                $name = $entry->getFilename();
+                if (preg_match('/^[A-Za-z0-9_-]+-\d{8}T\d{6}-[a-f0-9]{12}\.eml$/D', $name) !== 1) {
+                    continue;
+                }
+                $modified = $entry->getMTime();
+                if ($modified >= $cutoff) {
+                    continue;
+                }
+                if (!@unlink($entry->getPathname())) {
+                    throw new RuntimeException('Expired sandbox email could not be removed.');
+                }
+                $deleted++;
+            }
+        } catch (Throwable $error) {
+            if ($error instanceof InvalidArgumentException || $error instanceof RuntimeException) {
+                throw $error;
+            }
+            throw new RuntimeException('Sandbox retention cleanup failed.', 0, $error);
+        }
+
+        return $deleted;
+    }
+
     public function discard(string $artifact): void
     {
         $path = $this->ownedPath($artifact, false);

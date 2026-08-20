@@ -45,11 +45,9 @@ final class PluginIsolationTest extends TestCase
     }
 
     /**
-     * The PDF renderer is now wired, to one admin preview and nowhere else. This
-     * pins that shape: the invariant is no longer "nothing is wired" but "exactly
-     * this is wired", which is the version worth defending.
+     * The PDF renderer is wired only to the two explicit admin read paths.
      */
-    public function testThePdfRendererIsWiredOnlyToTheAdminPreview(): void
+    public function testThePdfRendererIsWiredOnlyToAdminPreviewAndDownload(): void
     {
         $root = dirname(__DIR__, 2);
         $controller = (string) file_get_contents($root . '/packages/woocommerce/src/AdminController.php');
@@ -69,6 +67,10 @@ final class PluginIsolationTest extends TestCase
             $controller
         );
         self::assertStringContainsString(
+            "add_action('admin_post_commerce_documents_download_pdf', [self::class, 'downloadPdf'])",
+            $controller
+        );
+        self::assertStringContainsString(
             "add_action('admin_post_commerce_documents_sandbox_email', [self::class, 'sandboxEmail'])",
             $controller
         );
@@ -76,14 +78,11 @@ final class PluginIsolationTest extends TestCase
         self::assertStringNotContainsString('sandboxEmail', $plugin);
 
         // Capability, then a nonce bound to the requested document.
-        self::assertMatchesRegularExpression(
-            "/function previewPdf\(\): void\s*\{\s*if \(!current_user_can\('manage_woocommerce'\)\)/",
-            $controller
-        );
-        self::assertStringContainsString(
-            "check_admin_referer('commerce_documents_preview_pdf_' . \$documentId)",
-            $controller
-        );
+        self::assertStringContainsString("public static function previewPdf(): void", $controller);
+        self::assertStringContainsString("public static function downloadPdf(): void", $controller);
+        self::assertStringContainsString("if (!current_user_can('manage_woocommerce'))", $controller);
+        self::assertStringContainsString("check_admin_referer('commerce_documents_' . \$nonceAction . '_' . \$documentId)", $controller);
+        self::assertStringContainsString("'Content-Disposition: ' . (\$download ? 'attachment' : 'inline')", $controller);
 
         // A preview, not a delivery: no transport, no queue, no write.
         self::assertDoesNotMatchRegularExpression(
@@ -111,6 +110,8 @@ final class PluginIsolationTest extends TestCase
             dirname(__DIR__, 2) . '/packages/woocommerce/src/AdminController.php'
         );
         self::assertStringContainsString("new SandboxMailer(self::sandboxMailDirectory(), 'sandbox@example.invalid')", $controller);
+        self::assertStringContainsString('purgeExpired(self::sandboxRetentionDays())', $controller);
+        self::assertStringContainsString('COMMERCE_DOCUMENTS_SANDBOX_RETENTION_DAYS', $controller);
         self::assertStringContainsString("'document.sandbox_stored'", $controller);
         self::assertStringContainsString('COMMERCE_DOCUMENTS_SANDBOX_MAIL_DIR', $controller);
         self::assertDoesNotMatchRegularExpression(

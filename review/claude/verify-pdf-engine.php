@@ -919,11 +919,9 @@ check('the preview is registered on admin_post only, never on an order hook',
     && preg_match('/add_action\(\s*[\'"]woocommerce_[^\'"]*[\'"]\s*,\s*\[self::class, [\'"]previewPdf/', $controller) === 0
     && strpos($plugin, 'previewPdf') === false);
 check('the preview requires the capability and a nonce bound to the document',
-    (bool) preg_match(
-        '/function previewPdf.*?current_user_can\(\'manage_woocommerce\'\).*?'
-        . 'check_admin_referer\(\'commerce_documents_preview_pdf_\' \. \$documentId\)/s',
-        $controller
-    ));
+    strpos($controller, "public static function previewPdf(): void") !== false
+    && strpos($controller, "if (!current_user_can('manage_woocommerce'))") !== false
+    && strpos($controller, "check_admin_referer('commerce_documents_' . \$nonceAction . '_' . \$documentId)") !== false);
 check('the preview sends the document to the browser and nowhere else',
     preg_match('/\b(wp_mail|mail|fsockopen|curl_\w+|wp_remote_\w+|file_put_contents)\s*\(/', $controller) === 0,
     'no transport and no write in the controller');

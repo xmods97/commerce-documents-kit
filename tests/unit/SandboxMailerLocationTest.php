@@ -102,6 +102,34 @@ final class SandboxMailerLocationTest extends TestCase
         self::assertStringEndsWith('@example.invalid', $default);
     }
 
+    public function testRetentionRemovesOnlyExpiredOwnedCaptures(): void
+    {
+        $directory = $this->scratch('retention');
+        $mailer = new SandboxMailer($directory);
+        $expired = $directory . DIRECTORY_SEPARATOR . 'doc_old-20200101T000000-aaaaaaaaaaaa.eml';
+        $recent = $directory . DIRECTORY_SEPARATOR . 'doc_recent-20200101T000000-bbbbbbbbbbbb.eml';
+        $foreign = $directory . DIRECTORY_SEPARATOR . 'operator-note.eml';
+        file_put_contents($expired, 'expired');
+        file_put_contents($recent, 'recent');
+        file_put_contents($foreign, 'foreign');
+        touch($expired, time() - (8 * 86400));
+        touch($recent, time() - (2 * 86400));
+        touch($foreign, time() - (30 * 86400));
+
+        self::assertSame(1, $mailer->purgeExpired(7));
+        self::assertFileDoesNotExist($expired);
+        self::assertFileExists($recent);
+        self::assertFileExists($foreign);
+    }
+
+    public function testRetentionWindowMustBeBounded(): void
+    {
+        $mailer = new SandboxMailer($this->scratch('retention-bounds'));
+
+        $this->expectException(InvalidArgumentException::class);
+        $mailer->purgeExpired(0);
+    }
+
     /** Creates a throwaway web root and points ABSPATH at it. */
     private function webRoot(): string
     {

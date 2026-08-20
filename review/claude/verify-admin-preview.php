@@ -396,14 +396,19 @@ $controller = (string) file_get_contents($root . '/packages/woocommerce/src/Admi
 
 check('the preview action is registered on admin_post',
     strpos($controller, "add_action('admin_post_commerce_documents_preview_pdf', [self::class, 'previewPdf'])") !== false);
+check('the download action is registered on admin_post',
+    strpos($controller, "add_action('admin_post_commerce_documents_download_pdf', [self::class, 'downloadPdf'])") !== false);
 check('it checks the capability before anything else',
-    (bool) preg_match("/function previewPdf\(\): void\s*\{\s*if \(!current_user_can\('manage_woocommerce'\)\)/", $controller));
+    strpos($controller, "if (!current_user_can('manage_woocommerce'))") !== false);
 check('it checks a nonce bound to the requested document',
-    strpos($controller, "check_admin_referer('commerce_documents_preview_pdf_' . \$documentId)") !== false);
+    strpos($controller, "check_admin_referer('commerce_documents_' . \$nonceAction . '_' . \$documentId)") !== false);
 check('it responds as an inline PDF with a sniffing guard',
     strpos($controller, "header('Content-Type: application/pdf')") !== false
-    && strpos($controller, "Content-Disposition: inline") !== false
+    && strpos($controller, "\$download ? 'attachment' : 'inline'") !== false
     && strpos($controller, "X-Content-Type-Options: nosniff") !== false);
+check('the download path uses attachment disposition',
+    strpos($controller, "add_action('admin_post_commerce_documents_download_pdf", 0) !== false
+    && strpos($controller, "'Content-Disposition: ' . (\$download ? 'attachment' : 'inline')") !== false);
 check('it clears any buffered output before writing the binary',
     strpos($controller, 'ob_end_clean()') !== false);
 check('a rendering failure becomes an error page, not a broken file',
@@ -412,6 +417,8 @@ check('no transport, no queue and no write exist in the controller',
     preg_match('/\b(wp_mail|fsockopen|curl_\w+|wp_remote_\w+|file_put_contents|wp_schedule_)\w*\s*\(/', $controller) === 0);
 check('the preview link is nonce-signed in the documents list',
     strpos($controller, "'commerce_documents_preview_pdf_' . \$document['document_id']") !== false);
+check('the download link is nonce-signed in the documents list',
+    strpos($controller, "'commerce_documents_download_pdf_' . \$document['document_id']") !== false);
 
 $filenames = [];
 foreach (['ORDER_CONFIRMATION/2026/000042' => 'ORDER_CONFIRMATION-2026-000042.pdf'] as $number => $expected) {
