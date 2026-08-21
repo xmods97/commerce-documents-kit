@@ -29,12 +29,6 @@ final class CustomerController
             20,
             2
         );
-        add_action(
-            'woocommerce_order_details_after_order_table',
-            [self::class, 'orderDetailsActions'],
-            20,
-            1
-        );
         add_action('wp_enqueue_scripts', [self::class, 'enqueueCustomerStyles']);
         add_action('admin_post_commerce_documents_customer_pdf', [self::class, 'customerPdf']);
     }
@@ -50,7 +44,7 @@ final class CustomerController
         $handle = 'commerce-documents-customer';
         wp_register_style($handle, false, [], '1.0.0');
         wp_enqueue_style($handle);
-        wp_add_inline_style($handle, '.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions{white-space:normal}.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions>a{display:block;width:180px;max-width:100%;box-sizing:border-box;margin:0 0 10px !important;text-align:center;white-space:nowrap}.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions>a:last-child{margin-bottom:0 !important}');
+        wp_add_inline_style($handle, '.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions{white-space:normal}.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions>a{display:block;width:180px;max-width:100%;box-sizing:border-box;margin:0 0 10px !important;text-align:center;white-space:nowrap}.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions>a:last-child{margin-bottom:0 !important}.woocommerce-account.woocommerce-view-order a[class*="commerce-document-"]+a[class*="commerce-document-"]{margin-left:8px !important}');
     }
 
     /** @param array<string, array<string, string>> $actions */
@@ -67,30 +61,6 @@ final class CustomerController
             ];
         }
         return $actions;
-    }
-
-    /** @param mixed $order */
-    public static function orderDetailsActions($order): void
-    {
-        if (!self::canViewOrder($order)) {
-            return;
-        }
-        $documents = self::documentsForOrder($order);
-        if ($documents === []) {
-            return;
-        }
-
-        echo '<section class="commerce-documents-customer-actions" style="margin:24px 0">'
-            . '<h2>Documents</h2>'
-            . '<p>Internal order confirmations. These are not fiscal invoices.</p>';
-        foreach ($documents as $document) {
-            echo '<p><strong>' . esc_html($document['label']) . '</strong> '
-                . '<a class="button" target="_blank" rel="noopener" href="'
-                . esc_url(self::pdfUrl($document['document_id'], 'print')) . '">Print PDF</a> '
-                . '<a class="button" href="'
-                . esc_url(self::pdfUrl($document['document_id'], 'download')) . '">Download PDF</a></p>';
-        }
-        echo '</section>';
     }
 
     public static function customerPdf(): void

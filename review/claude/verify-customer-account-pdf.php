@@ -19,7 +19,8 @@ $check = static function (string $name, bool $condition) use (&$checks, &$passes
 
 $check('customer controller is booted on frontend', strpos($plugin, 'CustomerController::boot();') !== false);
 $check('orders list hook is registered', strpos($controller, 'woocommerce_my_account_my_orders_actions') !== false);
-$check('order details hook is registered', strpos($controller, 'woocommerce_order_details_after_order_table') !== false);
+$check('duplicate order details section is disabled', strpos($controller, 'woocommerce_order_details_after_order_table') === false
+    && strpos($controller, 'commerce-documents-customer-actions') === false);
 $check('customer PDF endpoint is registered on admin_post', strpos($controller, "admin_post_commerce_documents_customer_pdf") !== false);
 $check('no unauthenticated customer PDF endpoint exists', strpos($controller, 'admin_post_nopriv_commerce_documents_customer_pdf') === false);
 $check('endpoint refuses unauthenticated requests', strpos($controller, "if (!is_user_logged_in() && !current_user_can('manage_woocommerce'))") !== false);
@@ -32,8 +33,8 @@ $check('customer access compares the account to order owner', strpos($controller
 $check('admin access remains possible for support', strpos($controller, "current_user_can('manage_woocommerce')") !== false);
 $check('legacy fiscal types cannot be exposed', strpos($controller, 'DocumentType::issuableValues()') !== false);
 $check('replaced documents are hidden from customer actions', strpos($controller, "superseded_by") !== false);
-$check('print and download links are nonce-signed', strpos($controller, "self::pdfUrl(\$document['document_id'], 'print')") !== false
-    && strpos($controller, "self::pdfUrl(\$document['document_id'], 'download')") !== false);
+$check('download links are nonce-signed', strpos($controller, "self::pdfUrl(\$document['document_id'], 'download')") !== false
+    && strpos($controller, 'wp_nonce_url') !== false);
 $check('print uses inline PDF disposition', strpos($controller, "mode === 'download' ? 'attachment' : 'inline'") !== false);
 $check('download filename comes from the immutable snapshot', strpos($controller, 'AdminController::snapshotPdfFilename($snapshot)') !== false);
 $check('customer path reuses the single production renderer seam', strpos($controller, 'AdminController::renderSnapshotPdf($snapshot)') !== false);
