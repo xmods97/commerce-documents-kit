@@ -447,7 +447,7 @@ final class AdminController
         }
 
         try {
-            $pdf = self::pdfRenderer()->render($snapshot);
+            $pdf = self::renderSnapshotPdf($snapshot);
         } catch (Throwable $error) {
             wp_die(
                 esc_html('The document could not be rendered: ' . $error->getMessage()),
@@ -463,7 +463,7 @@ final class AdminController
 
         nocache_headers();
         header('Content-Type: application/pdf');
-        header('Content-Disposition: ' . ($download ? 'attachment' : 'inline') . '; filename="' . self::pdfFilename($snapshot) . '"');
+        header('Content-Disposition: ' . ($download ? 'attachment' : 'inline') . '; filename="' . self::snapshotPdfFilename($snapshot) . '"');
         header('Content-Length: ' . strlen($pdf));
         header('X-Content-Type-Options: nosniff');
         echo $pdf;
@@ -636,7 +636,13 @@ final class AdminController
     }
 
     /** A filename safe for a Content-Disposition header, derived from the document number. */
-    private static function pdfFilename(DocumentSnapshot $snapshot): string
+    public static function renderSnapshotPdf(DocumentSnapshot $snapshot): string
+    {
+        return self::pdfRenderer()->render($snapshot);
+    }
+
+    /** A filename safe for a Content-Disposition header, derived from the document number. */
+    public static function snapshotPdfFilename(DocumentSnapshot $snapshot): string
     {
         $number = (string) ($snapshot->toArray()['document_number'] ?? 'document');
         $name = preg_replace('/[^A-Za-z0-9._-]+/', '-', $number);

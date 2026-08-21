@@ -30,6 +30,7 @@ final class Plugin
         add_action('init', [self::class, 'loadTranslations']);
         add_action('woocommerce_checkout_order_processed', [self::class, 'observeCheckoutOrder'], 20, 3);
         add_action('woocommerce_order_status_changed', [self::class, 'observeOrderStatus'], 10, 4);
+        CustomerController::boot();
         if (is_admin()) {
             AdminController::boot();
         }

@@ -257,7 +257,7 @@ $check('unresolvable WooCommerce rate ID is rejected instead of derived', (stati
 \WC_Tax::$rates[1] = '23.0000%';
 
 $adminSource = file_get_contents($root . '/packages/woocommerce/src/AdminController.php');
-$pluginSource = file_get_contents($root . '/packages/woocommerce/src/Plugin.php');
+$pluginSource = str_replace(["\r\n", "\r"], "\n", (string) file_get_contents($root . '/packages/woocommerce/src/Plugin.php'));
 $check(
     'admin writes both independent automation options',
     is_string($adminSource)

@@ -77,6 +77,8 @@ final class PluginIsolationTest extends TestCase
         self::assertStringNotContainsString('previewPdf', $plugin);
         self::assertStringNotContainsString('sandboxEmail', $plugin);
 
+        self::assertStringContainsString('CustomerController::boot()', $plugin);
+
         // Capability, then a nonce bound to the requested document.
         self::assertStringContainsString("public static function previewPdf(): void", $controller);
         self::assertStringContainsString("public static function downloadPdf(): void", $controller);
