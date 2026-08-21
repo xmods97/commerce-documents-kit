@@ -48,7 +48,7 @@ final class CustomerController
             $key = 'commerce-document-' . $document['document_id'];
             $actions[$key] = [
                 'url' => self::pdfUrl($document['document_id'], 'download'),
-                'name' => 'Download ' . $document['label'] . ' PDF',
+                'name' => self::shortActionLabel($document['type']),
             ];
         }
         return $actions;
@@ -186,6 +186,7 @@ final class CustomerController
             $data = $snapshot->toArray();
             $documents[] = [
                 'document_id' => (string) $data['document_id'],
+                'type' => (string) ($data['document_type'] ?? ''),
                 'label' => self::documentLabel((string) ($data['document_type'] ?? ''))
                     . ' ' . (string) ($data['document_number'] ?? ''),
             ];
@@ -208,6 +209,15 @@ final class CustomerController
             DocumentType::CORRECTION => 'Correction',
         ][$type] ?? 'Document';
     }
+    private static function shortActionLabel(string $type): string
+    {
+        return [
+            DocumentType::ORDER_CONFIRMATION => 'PDF zamówienia',
+            DocumentType::PAYMENT_CONFIRMATION => 'PDF płatności',
+            DocumentType::CORRECTION => 'PDF korekty',
+        ][$type] ?? 'PDF dokumentu';
+    }
+
 
     private static function pdfUrl(string $documentId, string $mode): string
     {
