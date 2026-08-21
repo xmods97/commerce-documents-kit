@@ -130,9 +130,20 @@ final class AdminController
                 'rules_paused' => "Automatyczne tworzenie jest wstrzymane",
                 'local_mode' => "Tryb lokalny.",
                 'local_mode_description' => "Dokumenty, podglądy PDF i pliki sandbox .eml pozostają lokalnie. Nie wysyłamy poczty zewnętrznej ani danych do Fakturownia lub KSeF.",
-                'settings_nav' => "Ustawienia",
-                'quick_nav' => "Szybkie działania",
-                'documents_nav' => "Dokumenty",
+                'start_title' => "Jak działa moduł",
+                'start_description' => "Ustaw dane raz, wybierz moment tworzenia dokumentu, a potem pobieraj PDF z listy dokumentów.",
+                'settings_nav' => "1. Dane i wygląd",
+                'rules_nav' => "2. Reguły automatyczne",
+                'quick_nav' => "3. Utwórz ręcznie",
+                'documents_nav' => "4. Dokumenty",
+                'step_settings' => "Dane i wygląd",
+                'step_settings_description' => "Sprzedawca, język i układ PDF.",
+                'step_rules' => "Reguły automatyczne",
+                'step_rules_description' => "Wybierz statusy dla obu potwierdzeń.",
+                'step_manual' => "Utwórz ręcznie",
+                'step_manual_description' => "Awaryjne działanie dla istniejącego zamówienia.",
+                'step_documents' => "Lista dokumentów",
+                'step_documents_description' => "Wyszukiwanie, PDF, audyt i korekty.",
                 'documents_shown' => "Widoczne dokumenty",
                 'latest_records' => "Najnowsze chronione rekordy",
                 'filtered_result' => "Wynik filtrowania",
@@ -149,7 +160,7 @@ final class AdminController
                 'migration_required' => "Wymagana migracja",
                 'current' => "Aktualny",
                 'settings_title' => "Ustawienia dokumentów",
-                'settings_description' => "Wybierz dane sprzedawcy, język PDF i zasady tworzenia potwierdzeń.",
+                'settings_description' => "Najpierw uzupełnij dane sprzedawcy i wygląd PDF. Niżej włączysz automatyczne reguły.",
                 'seller' => "Sprzedawca",
                 'use_store_details' => "Użyj danych sklepu WooCommerce",
                 'enter_manually' => "Wprowadź dane sprzedawcy ręcznie",
@@ -181,7 +192,7 @@ final class AdminController
                 'never_paid' => "Nigdy nie traktuj jako opłacone (zalecane)",
                 'cod_manual' => "Pobranie jest ręczne. Automatyczny hook nigdy nie tworzy dla niego potwierdzenia płatności.",
                 'save_settings' => "Zapisz ustawienia dokumentów",
-                'quick_title' => "Szybkie działania",
+                'quick_title' => "3. Utwórz dokument ręcznie",
                 'quick_description' => "Używaj ich tylko dla istniejącego zamówienia. Istniejące dokumenty są niezmienne i nie są nadpisywane.",
                 'order_created' => "Zamówienie utworzone",
                 'order_created_description' => "Utwórz nieopłacone potwierdzenie dla zamówienia bez daty płatności.",
@@ -205,7 +216,7 @@ final class AdminController
                 'schema_current' => "Schemat jest aktualny. Migracja nie jest wymagana.",
                 'migration_blocked' => "Migracja jest zablokowana do czasu rozwiązania błędów.",
                 'no_documents' => "Nie znaleziono dokumentów.",
-                'generate_from_quick' => "Utwórz chronione potwierdzenie w sekcji szybkich działań.",
+                'generate_from_quick' => "Utwórz chronione potwierdzenie w sekcji tworzenia ręcznego.",
                 'number' => "Numer",
                 'type' => "Typ",
                 'order' => "Zamówienie",
@@ -246,9 +257,20 @@ final class AdminController
                 'rules_paused' => "Автоматическое создание приостановлено",
                 'local_mode' => "Локальный режим.",
                 'local_mode_description' => "Документы, PDF-просмотр и sandbox-файлы .eml остаются локальными. Внешняя почта, Fakturownia и KSeF не используются.",
-                'settings_nav' => "Настройки",
-                'quick_nav' => "Быстрые действия",
-                'documents_nav' => "Документы",
+                'start_title' => "Как работает модуль",
+                'start_description' => "Один раз заполните данные, выберите момент создания документа, затем скачивайте PDF из списка.",
+                'settings_nav' => "1. Данные и вид PDF",
+                'rules_nav' => "2. Автоматические правила",
+                'quick_nav' => "3. Создать вручную",
+                'documents_nav' => "4. Документы",
+                'step_settings' => "Данные и вид PDF",
+                'step_settings_description' => "Продавец, язык и макет PDF.",
+                'step_rules' => "Автоматические правила",
+                'step_rules_description' => "Выберите статусы для обоих подтверждений.",
+                'step_manual' => "Создать вручную",
+                'step_manual_description' => "Ручное действие для существующего заказа.",
+                'step_documents' => "Список документов",
+                'step_documents_description' => "Поиск, PDF, аудит и коррекции.",
                 'documents_shown' => "Документов показано",
                 'latest_records' => "Последние защищённые записи",
                 'filtered_result' => "Результат фильтра",
@@ -265,7 +287,7 @@ final class AdminController
                 'migration_required' => "Требуется миграция",
                 'current' => "Актуальна",
                 'settings_title' => "Настройки документов",
-                'settings_description' => "Выберите данные продавца, язык PDF и правила создания подтверждений.",
+                'settings_description' => "Сначала заполните данные продавца и вид PDF. Ниже включаются автоматические правила.",
                 'seller' => "Продавец",
                 'use_store_details' => "Использовать данные магазина WooCommerce",
                 'enter_manually' => "Ввести данные продавца вручную",
@@ -297,7 +319,7 @@ final class AdminController
                 'never_paid' => "Никогда не считать оплаченным (рекомендуется)",
                 'cod_manual' => "Наложенный платёж обрабатывается вручную. Автоматический hook не создаёт для него подтверждение оплаты.",
                 'save_settings' => "Сохранить настройки документов",
-                'quick_title' => "Быстрые действия",
+                'quick_title' => "3. Создать документ вручную",
                 'quick_description' => "Используйте их только для существующего заказа. Существующие документы неизменяемы и не перезаписываются.",
                 'order_created' => "Заказ создан",
                 'order_created_description' => "Создать неоплаченное подтверждение для заказа без даты оплаты.",
@@ -321,7 +343,7 @@ final class AdminController
                 'schema_current' => "Схема актуальна. Миграция не требуется.",
                 'migration_blocked' => "Миграция заблокирована до устранения ошибок.",
                 'no_documents' => "Документы не найдены.",
-                'generate_from_quick' => "Создайте защищённое подтверждение в разделе быстрых действий.",
+                'generate_from_quick' => "Создайте защищённое подтверждение в разделе ручного создания.",
                 'number' => "Номер",
                 'type' => "Тип",
                 'order' => "Заказ",
@@ -426,10 +448,17 @@ final class AdminController
         self::notice();
         echo '<div class="cdk-callout"><strong>' . esc_html(self::t('local_mode')) . '</strong> '
             . esc_html(self::t('local_mode_description')) . '</div>';
+        echo '<section class="cdk-guide" id="cdk-start"><div class="cdk-card__head"><div><h2>' . esc_html(self::t('start_title')) . '</h2><p>' . esc_html(self::t('start_description')) . '</p></div></div><div class="cdk-guide-grid">'
+            . '<a class="cdk-guide-step" href="#cdk-settings"><span class="cdk-guide-step__number">1</span><strong>' . esc_html(self::t('step_settings')) . '</strong><small>' . esc_html(self::t('step_settings_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="#cdk-rules"><span class="cdk-guide-step__number">2</span><strong>' . esc_html(self::t('step_rules')) . '</strong><small>' . esc_html(self::t('step_rules_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="#cdk-quick-actions"><span class="cdk-guide-step__number">3</span><strong>' . esc_html(self::t('step_manual')) . '</strong><small>' . esc_html(self::t('step_manual_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="#cdk-documents"><span class="cdk-guide-step__number">4</span><strong>' . esc_html(self::t('step_documents')) . '</strong><small>' . esc_html(self::t('step_documents_description')) . '</small></a>'
+            . '</div></section>';
         echo '<nav class="cdk-nav" aria-label="' . esc_attr(self::t('sections')) . '">'
-            . '<a href="#cdk-settings">' . esc_html(self::t('settings_nav')) . '</a>'
-            . '<a href="#cdk-quick-actions">' . esc_html(self::t('quick_nav')) . '</a>'
-            . '<a href="#cdk-documents">' . esc_html(self::t('documents_nav')) . '</a></nav>';
+            . '<a href="#cdk-settings"><span>1</span>' . esc_html(self::t('settings_nav')) . '</a>'
+            . '<a href="#cdk-rules"><span>2</span>' . esc_html(self::t('rules_nav')) . '</a>'
+            . '<a href="#cdk-quick-actions"><span>3</span>' . esc_html(self::t('quick_nav')) . '</a>'
+            . '<a href="#cdk-documents"><span>4</span>' . esc_html(self::t('documents_nav')) . '</a></nav>';
         echo '<div class="cdk-summary">'
             . self::summaryCard(self::t('documents_shown'), (string) count($documents), $search === '' ? self::t('latest_records') : self::t('filtered_result'))
             . self::summaryCard(self::t('readable_snapshots'), (string) $readableCount, self::t('encrypted_preview'))
@@ -468,7 +497,7 @@ final class AdminController
             echo '<option value="' . esc_attr($value) . '" ' . selected($settings['pdf_design'] ?? DesignCatalog::CLASSIC, $value, false) . '>'
                 . esc_html($label) . '</option>';
         }
-        echo '</select><p class="description">' . esc_html(self::t('design_description')) . '</p></td></tr></table><hr class="cdk-divider"><h3>' . esc_html(self::t('order_confirmation_heading')) . '</h3>';
+        echo '</select><p class="description">' . esc_html(self::t('design_description')) . '</p></td></tr></table><div id="cdk-rules" class="cdk-subsection"><h3>' . esc_html(self::t('order_confirmation_heading')) . '</h3>';
         echo '<input type="hidden" name="commerce_documents_wc_order_confirmation_enabled" value="0">';
         echo '<label><input type="checkbox" name="commerce_documents_wc_order_confirmation_enabled" value="1" '
             . checked($enabled, true, false) . '> ' . esc_html(self::t('enable_order_confirmation')) . '</label>';
@@ -512,6 +541,7 @@ final class AdminController
             . esc_attr($offlineMethods) . '" placeholder="' . esc_attr(self::t('offline_methods_placeholder')) . '"></p>'
             . '<p class="description">' . esc_html(self::t('offline_description')) . '</p>'
             . '</td></tr></table>';
+        echo '</div>';
         submit_button(self::t('save_settings'));
         echo '</form></section>';
 
@@ -1187,7 +1217,10 @@ final class AdminController
         echo '<style>
         .cdk-nav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px;padding:4px;background:#f5f8fb;border:1px solid #dbe3ea;border-radius:10px;width:max-content;max-width:100%}.cdk-nav a{display:inline-flex;align-items:center;min-height:34px;padding:0 13px;border-radius:7px;color:#17324d;text-decoration:none;font-weight:600}.cdk-nav a:hover,.cdk-nav a:focus{background:#e5f5f5;color:#007f7c;box-shadow:0 0 0 2px rgba(0,168,168,.18)}.cdk-card[id]{scroll-margin-top:20px}.cdk-action-stack{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:300px}.cdk-action-stack>.button,.cdk-action-stack .cdk-inline-form .button,.cdk-action-stack .cdk-correction-form .button{min-width:92px;min-height:32px;box-sizing:border-box;text-align:center}.cdk-action-stack .cdk-inline-form{display:inline-flex;gap:6px;align-items:center;margin:0!important}.cdk-action-stack .cdk-correction-form{display:grid!important;grid-template-columns:minmax(105px,1fr) minmax(150px,1fr) auto;gap:6px;align-items:center;margin:6px 0 0!important;width:100%}.cdk-action-stack .cdk-correction-form input{min-width:0;width:100%}.cdk-action-grid form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}@media(max-width:782px){.cdk-nav{width:auto}.cdk-action-stack{min-width:0}.cdk-action-stack .cdk-correction-form{grid-template-columns:1fr}.cdk-action-stack .cdk-correction-form .button{width:100%}}
         .cdk-hero__tools{display:flex;flex-direction:column;align-items:flex-end;gap:10px}.cdk-language-switcher{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.12);color:#fff}.cdk-language-switcher label{font-size:12px;font-weight:600}.cdk-language-switcher select{min-height:30px}.cdk-language-switcher .button{min-height:30px;padding:0 10px}@media(max-width:782px){.cdk-hero__tools{align-items:flex-start;width:100%}.cdk-language-switcher{flex-wrap:wrap}}
-        </style>';
+                .cdk-guide{margin:0 0 18px;padding:22px;background:#fff;border:1px solid #dbe3ea;border-radius:10px;box-shadow:0 1px 2px rgba(15,39,68,.04)}
+        .cdk-guide .cdk-card__head{margin-bottom:14px}.cdk-guide-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+        .cdk-guide-step{display:grid;grid-template-columns:30px 1fr;column-gap:10px;row-gap:3px;align-items:center;padding:13px 12px;border:1px solid #dbe7ef;border-radius:8px;background:#f8fbfd;color:#172033;text-decoration:none;transition:border-color .15s,box-shadow .15s,transform .15s}
+        .cdk-guide-step:hover,.cdk-guide-step:focus{border-color:#00a8a8;box-shadow:0 3px 10px rgba(15,39,68,.1);transform:translateY(-1px);color:#007f7c;outline:none}.cdk-guide-step__number{grid-row:span 2;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#00a8a8;color:#fff;font-weight:700}.cdk-guide-step strong{font-size:13px;line-height:1.25}.cdk-guide-step small{color:#667085;font-size:11px;line-height:1.35}.cdk-nav{position:sticky;top:32px;z-index:5;box-shadow:0 2px 8px rgba(15,39,68,.08)}.cdk-nav a{gap:7px}.cdk-nav a span{display:grid;place-items:center;width:21px;height:21px;border-radius:50%;background:#dcecef;color:#17606a;font-size:11px;font-weight:700}.cdk-nav a:hover span,.cdk-nav a:focus span{background:#00a8a8;color:#fff}.cdk-subsection{scroll-margin-top:80px;padding-top:4px}.cdk-subsection>h3{padding-top:18px;border-top:1px solid #e5e7eb}.cdk-card[id]{scroll-margin-top:80px}@media(max-width:1000px){.cdk-guide-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:782px){.cdk-guide-grid{grid-template-columns:1fr}.cdk-nav{top:0}.cdk-nav a{flex:1 1 45%}}</style>';
     }
 
     private static function field(
