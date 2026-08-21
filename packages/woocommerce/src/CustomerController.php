@@ -35,7 +35,22 @@ final class CustomerController
             20,
             1
         );
+        add_action('wp_enqueue_scripts', [self::class, 'enqueueCustomerStyles']);
         add_action('admin_post_commerce_documents_customer_pdf', [self::class, 'customerPdf']);
+    }
+
+    public static function enqueueCustomerStyles(): void
+    {
+        if (!function_exists('is_account_page') || !is_account_page()
+            || !function_exists('wp_register_style')
+            || !function_exists('wp_add_inline_style')) {
+            return;
+        }
+
+        $handle = 'commerce-documents-customer';
+        wp_register_style($handle, false, [], '1.0.0');
+        wp_enqueue_style($handle);
+        wp_add_inline_style($handle, '.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions{white-space:normal}.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions>a{display:block;width:180px;max-width:100%;box-sizing:border-box;margin:0 0 8px;text-align:center;white-space:nowrap}.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions>a:last-child{margin-bottom:0}');
     }
 
     /** @param array<string, array<string, string>> $actions */
