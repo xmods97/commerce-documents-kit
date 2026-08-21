@@ -131,19 +131,255 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
         // document is issued without a logo rather than not issued at all.
         $logo = $this->logoProvider === null ? null : $this->logoProvider->logo();
 
+        $design = DesignCatalog::normalize((string) ($metadata['pdf_design'] ?? DesignCatalog::CLASSIC));
         $page = new PageBuilder($this->regular, $this->bold);
 
-        $this->heading($page, $data, $labels, $metadata, $logo);
-        $this->parties($page, $data, $labels);
-        $this->items($page, $data, $labels, $currency);
-        $this->totals($page, $data, $labels, $currency);
-        $this->taxSummary($page, $data, $labels, $currency);
-        $this->corrections($page, $labels, $metadata);
+        if ($design === DesignCatalog::CARD) {
+            // A calm header band and a single highlighted total block echo the
+            // reference card layout without introducing invoice/KSeF claims.
+            $page->fillBox(0.0, 748.0, PageBuilder::WIDTH, 94.0, 0.91, 0.94, 0.98);
+            $this->heading($page, $data, $labels, $metadata, $logo);
+            $this->parties($page, $data, $labels);
+            $this->items($page, $data, $labels, $currency);
+            $this->cardTotals($page, $data, $labels, $currency);
+            $this->taxSummary($page, $data, $labels, $currency);
+            $this->corrections($page, $labels, $metadata);
+        } elseif ($design === DesignCatalog::PANEL) {
+            $this->panelLayout($page, $data, $labels, $metadata, $currency, $logo);
+            for ($index = 0; $index < $page->pageCount(); $index++) {
+                $page->prepend($index, function (PageBuilder $background) use ($data, $labels, $metadata, $currency): void {
+                    $this->panelSidebar($background, $data, $labels, $metadata, $currency);
+                });
+            }
+        } else {
+            $this->heading($page, $data, $labels, $metadata, $logo);
+            $this->parties($page, $data, $labels);
+            $this->items($page, $data, $labels, $currency);
+            $this->totals($page, $data, $labels, $currency);
+            $this->taxSummary($page, $data, $labels, $currency);
+            $this->corrections($page, $labels, $metadata);
+        }
         $this->footers($page, $data, $labels);
 
         return $this->assemble($page, $data, $logo);
     }
 
+    /** Layout B: a colored header and highlighted gross total. */
+    private function cardTotals(PageBuilder $page, array $data, array $labels, string $currency): void
+    {
+        $totals = (array) ($data['totals'] ?? []);
+        $page->ensure(72.0);
+        $top = $page->y();
+        $page->fillBox(330.0, $top - 58.0, 217.0, 58.0, 0.86, 0.92, 0.99);
+        $page->text(342.0, $top - 17.0, $labels['net'], 9.0, false);
+        $page->textRightFitted(538.0, $top - 17.0, $this->money((int) ($totals['net'] ?? 0)) . ' ' . $currency, 9.0, false, 90.0);
+        $page->text(342.0, $top - 32.0, $labels['tax'], 9.0, false);
+        $page->textRightFitted(538.0, $top - 32.0, $this->money((int) ($totals['tax'] ?? 0)) . ' ' . $currency, 9.0, false, 90.0);
+        $page->text(342.0, $top - 48.0, $labels['total'] . ' ' . $labels['gross'], 10.0, true);
+        $page->textRightFitted(538.0, $top - 48.0, $this->money((int) ($totals['gross'] ?? 0)) . ' ' . $currency, 11.0, true, 90.0);
+        $page->moveTo($top - 72.0);
+    }
+
+    /** Layout C: content area on the left and a repeated status/payment panel. */
+    private function panelLayout(
+        PageBuilder $page,
+        array $data,
+        array $labels,
+        array $metadata,
+        string $currency,
+        ?RasterImage $logo
+    ): void {
+        $this->panelHeading($page, $data, $labels, $metadata, $logo);
+        $top = $page->y();
+        $sellerBottom = $this->panelParty($page, 44.0, $top, $labels['seller'], (array) $data['seller'], 155.0);
+        $buyerBottom = $this->panelParty($page, 220.0, $top, $labels['buyer'], (array) $data['buyer'], 155.0);
+        $page->moveTo(min($sellerBottom, $buyerBottom) - 14.0);
+        $this->panelItems($page, $data, $labels, $currency);
+        $this->panelTotals($page, $data, $labels, $currency);
+        $this->panelTaxSummary($page, $data, $labels, $currency);
+        $this->panelCorrections($page, $labels, $metadata);
+    }
+
+    private function panelHeading(PageBuilder $page, array $data, array $labels, array $metadata, ?RasterImage $logo): void
+    {
+        if ($logo !== null) {
+            $scale = min(115.0 / $logo->width(), 38.0 / $logo->height());
+            $page->image(self::LOGO_RESOURCE, 430.0, 790.0 - $logo->height() * $scale, $logo->width() * $scale, $logo->height() * $scale);
+        }
+        $title = strtoupper(str_replace('_', ' ', (string) $data['document_type']));
+        $page->line(44.0, $title, 14.0, true, 18.0);
+        $page->line(44.0, self::field((string) $data['document_number']), 10.0, true, 15.0);
+        $page->line(44.0, $labels['issued'] . ': ' . self::date((string) $data['issued_at']), 8.5, false, 11.0);
+        if (isset($metadata['order_number'])) {
+            $page->line(44.0, $labels['order'] . ': #' . self::field((string) $metadata['order_number']), 8.5, false, 11.0);
+        }
+        $page->advance(9.0);
+    }
+
+    private function panelParty(PageBuilder $page, float $x, float $top, string $heading, array $party, float $width): float
+    {
+        $address = (array) ($party['address'] ?? []);
+        $page->text($x, $top, $heading, 8.5, true);
+        $y = $top - 12.0;
+        $lines = [];
+        foreach ([
+            (string) ($party['name'] ?? ''),
+            (string) ($party['tax_identifier'] ?? '') !== '' ? 'NIP: ' . (string) $party['tax_identifier'] : '',
+            trim((string) ($address['line1'] ?? '') . ' ' . (string) ($address['line2'] ?? '')),
+            trim((string) ($address['postal_code'] ?? '') . ' ' . (string) ($address['city'] ?? '')),
+            (string) ($address['country_code'] ?? ''),
+            (string) ($party['email'] ?? ''),
+        ] as $value) {
+            $value = self::field($value);
+            if (trim($value) === '') {
+                continue;
+            }
+            foreach ($page->wrap($value, $width, 8.0, false, 3) as $wrapped) {
+                $lines[] = $wrapped;
+            }
+        }
+        foreach ($lines as $line) {
+            $page->text($x, $y, $line, 8.0);
+            $y -= 10.0;
+        }
+        return $y;
+    }
+
+    private function panelItems(PageBuilder $page, array $data, array $labels, string $currency): void
+    {
+        $this->panelTableHeader($page, $labels, false);
+        $rendered = 0;
+        foreach ((array) $data['items'] as $item) {
+            if (!is_array($item) || $rendered >= self::MAX_ITEMS) {
+                break;
+            }
+            $description = $page->wrap(self::text((string) ($item['description'] ?? ''), self::MAX_DESCRIPTION), 185.0, 7.5, false, 5);
+            if ($description === []) {
+                $description = ['—'];
+            }
+            $height = count($description) * 9.5 + 2.0;
+            if ($page->ensure($height + 24.0)) {
+                $this->panelTableHeader($page, $labels, true);
+            }
+            $y = $page->y();
+            foreach ($description as $index => $line) {
+                $page->text(44.0, $y - $index * 9.5, $line, 7.5);
+            }
+            $quantity = self::scaled((int) ($item['quantity']['scaled_units'] ?? 0), (int) ($item['quantity']['scale'] ?? 0));
+            $unit = self::field((string) ($item['unit'] ?? ''));
+            $page->textRightFitted(255.0, $y, trim($quantity . ' ' . $unit), 7.5, false, 55.0);
+            foreach ([[300.0, $this->money((int) ($item['net'] ?? 0)), 41.0], [343.0, $this->money((int) ($item['tax'] ?? 0)), 39.0], [382.0, $this->money((int) ($item['gross'] ?? 0)), 35.0]] as $cell) {
+                $page->textRightFitted($cell[0], $y, $cell[1], 7.5, false, $cell[2]);
+            }
+            $page->moveTo($y - $height);
+            $rendered++;
+        }
+        $omitted = count((array) $data['items']) - $rendered;
+        if ($omitted > 0) {
+            $page->ensure(18.0);
+            $page->line(44.0, '… ' . $omitted . ' ' . $labels['further_lines'], 7.5, true, 10.0);
+        }
+        $page->advance(2.0);
+        $page->rule($page->y(), 44.0, 382.0);
+        $page->advance(12.0);
+    }
+
+    private function panelTableHeader(PageBuilder $page, array $labels, bool $continued): void
+    {
+        $y = $page->y();
+        $heading = $labels['description'] . ($continued ? ' (' . $labels['continued'] . ')' : '');
+        $page->text(44.0, $y, $heading, 7.5, true);
+        $page->textRight(255.0, $y, $labels['quantity'], 7.5, true);
+        $page->textRight(300.0, $y, $labels['net'], 7.5, true);
+        $page->textRight(343.0, $y, $labels['tax'], 7.5, true);
+        $page->textRight(382.0, $y, $labels['gross'], 7.5, true);
+        $page->moveTo($y - 4.0);
+        $page->rule($page->y(), 44.0, 382.0);
+        $page->advance(10.0);
+    }
+
+    private function panelTotals(PageBuilder $page, array $data, array $labels, string $currency): void
+    {
+        $totals = (array) ($data['totals'] ?? []);
+        $page->ensure(58.0);
+        $top = $page->y();
+        $page->fillBox(230.0, $top - 48.0, 152.0, 48.0, 0.93, 0.96, 0.99);
+        $page->textRight(320.0, $top - 14.0, $labels['net'], 8.0);
+        $page->textRightFitted(382.0, $top - 14.0, $this->money((int) ($totals['net'] ?? 0)) . ' ' . $currency, 8.0, false, 58.0);
+        $page->textRight(320.0, $top - 27.0, $labels['tax'], 8.0);
+        $page->textRightFitted(382.0, $top - 27.0, $this->money((int) ($totals['tax'] ?? 0)) . ' ' . $currency, 8.0, false, 58.0);
+        $page->textRight(320.0, $top - 42.0, $labels['total'] . ' ' . $labels['gross'], 9.0, true);
+        $page->textRightFitted(382.0, $top - 42.0, $this->money((int) ($totals['gross'] ?? 0)) . ' ' . $currency, 9.0, true, 62.0);
+        $page->moveTo($top - 62.0);
+    }
+
+    private function panelTaxSummary(PageBuilder $page, array $data, array $labels, string $currency): void
+    {
+        $groups = [];
+        foreach ((array) $data['items'] as $item) {
+            if (!is_array($item)) { continue; }
+            $rate = (int) ($item['tax_rate_ppm'] ?? 0);
+            if (!isset($groups[$rate])) { $groups[$rate] = ['net' => 0, 'tax' => 0, 'gross' => 0]; }
+            $groups[$rate]['net'] += (int) ($item['net'] ?? 0);
+            $groups[$rate]['tax'] += (int) ($item['tax'] ?? 0);
+            $groups[$rate]['gross'] += (int) ($item['gross'] ?? 0);
+        }
+        if ($groups === []) { return; }
+        ksort($groups, SORT_NUMERIC);
+        $page->ensure(26.0 + count($groups) * 10.0);
+        $page->line(44.0, $labels['tax_summary'] . ' (' . $currency . ')', 8.0, true, 11.0);
+        $y = $page->y();
+        $page->textRight(255.0, $y, $labels['tax_rate'], 7.5, true);
+        $page->textRight(300.0, $y, $labels['net'], 7.5, true);
+        $page->textRight(343.0, $y, $labels['tax'], 7.5, true);
+        $page->textRight(382.0, $y, $labels['gross'], 7.5, true);
+        $page->advance(10.0);
+        foreach ($groups as $rate => $amounts) {
+            $y = $page->y();
+            $page->textRightFitted(255.0, $y, self::percentage((int) $rate), 7.5, false, 42.0);
+            $page->textRightFitted(300.0, $y, $this->money($amounts['net']), 7.5, false, 41.0);
+            $page->textRightFitted(343.0, $y, $this->money($amounts['tax']), 7.5, false, 39.0);
+            $page->textRightFitted(382.0, $y, $this->money($amounts['gross']), 7.5, false, 35.0);
+            $page->advance(10.0);
+        }
+    }
+
+    private function panelCorrections(PageBuilder $page, array $labels, array $metadata): void
+    {
+        if (!isset($metadata['correction_of'])) { return; }
+        $page->ensure(40.0);
+        $page->line(44.0, $labels['correction_of'] . ': ' . self::field((string) $metadata['correction_of']), 8.0, true, 11.0);
+        $note = self::text((string) ($metadata['correction_note'] ?? ''), self::MAX_NOTE);
+        foreach ($page->wrap($labels['correction_reason'] . ': ' . $note, 338.0, 8.0, false, 3) as $line) {
+            $page->line(44.0, $line, 8.0, false, 10.0);
+        }
+    }
+
+    private function panelSidebar(PageBuilder $page, array $data, array $labels, array $metadata, string $currency): void
+    {
+        $page->fillBox(410.0, PageBuilder::BOTTOM, 185.0, 694.0, 0.95, 0.97, 0.99);
+        $page->box(410.0, PageBuilder::BOTTOM, 185.0, 694.0, 0.82);
+        $x = 430.0;
+        $page->text($x, 742.0, strtoupper($labels['status'] ?? 'STATUS'), 8.0, true);
+        $badge = self::paymentBadge($metadata);
+        $badgeLines = $page->wrap($badge === '' ? '—' : $badge, 145.0, 9.0, true, 3);
+        $y = 726.0;
+        foreach ($badgeLines as $line) { $page->text($x, $y, $line, 9.0, true); $y -= 11.0; }
+        $totals = (array) ($data['totals'] ?? []);
+        $page->text($x, 674.0, $labels['total'] . ' ' . $labels['gross'], 8.0, true);
+        $page->text($x, 655.0, $this->money((int) ($totals['gross'] ?? 0)) . ' ' . $currency, 14.0, true);
+        $page->rule(640.0, $x, 575.0, 0.82);
+        $page->text($x, 620.0, $labels['net'], 8.0, false);
+        $page->textRight(575.0, 620.0, $this->money((int) ($totals['net'] ?? 0)) . ' ' . $currency, 8.0);
+        $page->text($x, 604.0, $labels['tax'], 8.0, false);
+        $page->textRight(575.0, 604.0, $this->money((int) ($totals['tax'] ?? 0)) . ' ' . $currency, 8.0);
+        if (isset($metadata['order_number'])) {
+            $page->text($x, 565.0, $labels['order'], 8.0, true);
+            $page->text($x, 550.0, '#' . self::field((string) $metadata['order_number']), 9.0);
+        }
+        $page->text($x, 515.0, $labels['issued'], 8.0, true);
+        $page->text($x, 500.0, self::date((string) $data['issued_at']), 8.0);
+    }
     /**
      * @param array<string, mixed> $data
      * @param array<string, string> $labels

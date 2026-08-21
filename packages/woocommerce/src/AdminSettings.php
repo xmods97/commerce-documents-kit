@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Xmods\CommerceDocuments\WooCommerce;
 
+use Xmods\CommerceDocuments\Rendering\DesignCatalog;
+
 final class AdminSettings
 {
     /**
@@ -70,6 +72,7 @@ final class AdminSettings
                 ],
             ],
             'language' => $language,
+            'pdf_design' => DesignCatalog::normalize((string) ($input['pdf_design'] ?? DesignCatalog::CLASSIC)),
             // The first confirmation is issued at checkout; the second only
             // after WooCommerce has confirmed payment. Their status matrices
             // are intentionally independent.

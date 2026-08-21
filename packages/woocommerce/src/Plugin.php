@@ -16,6 +16,7 @@ use Xmods\CommerceDocuments\WordPress\WpdbNumberGenerator;
 use Xmods\CommerceDocuments\WordPress\ConfigKeyProvider;
 use Xmods\CommerceDocuments\WordPress\EncryptedSnapshotCodec;
 use Xmods\CommerceDocuments\WordPress\OpenSslAesGcmCipher;
+use Xmods\CommerceDocuments\Rendering\DesignCatalog;
 
 final class Plugin
 {
@@ -200,6 +201,7 @@ final class Plugin
             function_exists('wc_get_price_decimals') ? (int) wc_get_price_decimals() : 2
         );
         $request = (new OrderMapper())->map($adapter->map($order), $policy, gmdate(DATE_ATOM));
+        $request->metadata['pdf_design'] = DesignCatalog::normalize((string) ($settings['pdf_design'] ?? DesignCatalog::CLASSIC));
 
         $prefix = $wpdb->prefix;
         $service = new GenerateDocument(

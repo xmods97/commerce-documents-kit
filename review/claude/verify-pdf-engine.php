@@ -1070,6 +1070,41 @@ check('the refusal sits in the application service, not only in the order policy
         'assertIssuable()'
     ) !== false);
 
+section('E14 — selectable PDF designs');
+
+$designPdfs = [];
+foreach ([
+    \Xmods\CommerceDocuments\Rendering\DesignCatalog::CLASSIC,
+    \Xmods\CommerceDocuments\Rendering\DesignCatalog::CARD,
+    \Xmods\CommerceDocuments\Rendering\DesignCatalog::PANEL,
+] as $design) {
+    $designPdfs[$design] = $renderer->render(snapshot(
+        [['Płyta granitowa Nero Assoluto, polerowana 60×30×2 cm', 250, 18900, 230000]],
+        [
+            'pdf_design' => $design,
+            'order_number' => '4242',
+            'payment_method' => 'cod',
+            'payment_confirmed' => 'no',
+        ]
+    ));
+    $designFile = new PdfFile($designPdfs[$design]);
+    check($design . ' renders a readable page', count($designFile->pageObjects()) >= 1
+        && strpos($designFile->text(), 'Płyta granitowa') !== false);
+    check($design . ' keeps the unpaid confirmation badge',
+        strpos($designFile->text(), 'NIEOPŁACONE') !== false);
+    check($design . ' has no invoice or KSeF claim',
+        preg_match('/faktura|invoice|KSeF|QR/i', $designFile->text()) !== 1);
+}
+check('the three selected designs produce distinct deterministic PDFs',
+    count(array_unique(array_map(static function (string $pdf): string { return hash('sha256', $pdf); }, $designPdfs))) === 3
+    && $designPdfs[\Xmods\CommerceDocuments\Rendering\DesignCatalog::CARD]
+        === $renderer->render(snapshot([['Płyta granitowa Nero Assoluto, polerowana 60×30×2 cm', 250, 18900, 230000]], [
+            'pdf_design' => \Xmods\CommerceDocuments\Rendering\DesignCatalog::CARD,
+            'order_number' => '4242', 'payment_method' => 'cod', 'payment_confirmed' => 'no',
+        ])));
+file_put_contents($evidence . '/pdf-design-classic.pdf', $designPdfs['classic']);
+file_put_contents($evidence . '/pdf-design-card.pdf', $designPdfs['card']);
+file_put_contents($evidence . '/pdf-design-panel.pdf', $designPdfs['panel']);
 // ---------------------------------------------------------------------------
 
 echo PHP_EOL . sprintf('checks=%d pass=%d fail=%d', $pass + $fail, $pass, $fail) . PHP_EOL;

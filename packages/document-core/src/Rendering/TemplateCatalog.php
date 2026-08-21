@@ -11,6 +11,7 @@ final class TemplateCatalog
     private const LABELS = [
         'en' => [
             'seller' => 'Seller',
+            'status' => 'Status',
             'buyer' => 'Buyer',
             'description' => 'Description',
             'quantity' => 'Quantity',
@@ -34,6 +35,7 @@ final class TemplateCatalog
         ],
         'pl' => [
             'seller' => 'Sprzedawca',
+            'status' => 'Status',
             'buyer' => 'Nabywca',
             'description' => 'Opis',
             'quantity' => 'Ilość',

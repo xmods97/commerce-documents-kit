@@ -21,6 +21,7 @@ use Xmods\CommerceDocuments\WordPress\WpdbNumberGenerator;
 use Xmods\CommerceDocuments\WordPress\SandboxMailer;
 use Xmods\CommerceDocuments\WordPress\NativeMediaLibrary;
 use Xmods\CommerceDocuments\Rendering\EmbeddedFontPdfRenderer;
+use Xmods\CommerceDocuments\Rendering\DesignCatalog;
 use Xmods\CommerceDocuments\Rendering\HtmlRenderer;
 use Xmods\CommerceDocuments\Rendering\TemplateCatalog;
 use Xmods\CommerceDocuments\WordPress\WordPressLogoProvider;
@@ -165,6 +166,8 @@ final class AdminController
                 'pdf_language' => "Język dokumentu PDF",
                 'polish_pdf' => "Polski",
                 'english_pdf' => "English",
+                'pdf_design' => "Układ dokumentu PDF",
+                'design_description' => "Dotyczy nowych dokumentów. Istniejące dokumenty zachowują swój zapisany układ.",
                 'order_confirmation_heading' => "1. Potwierdzenie zamówienia — po przejściu checkoutu",
                 'enable_order_confirmation' => "Twórz potwierdzenie zamówienia po wybranym statusie",
                 'order_confirmation_description' => "Ten dokument nie wymaga daty płatności i otrzymuje oznaczenie NIEOPŁACONE. To potwierdzenie wewnętrzne, a nie faktura.",
@@ -279,6 +282,8 @@ final class AdminController
                 'pdf_language' => "Язык PDF-документа",
                 'polish_pdf' => "Польский",
                 'english_pdf' => "English",
+                'pdf_design' => "Макет PDF-документа",
+                'design_description' => "Относится к новым документам. Существующие документы сохраняют свой выбранный макет.",
                 'order_confirmation_heading' => "1. Подтверждение заказа — после оформления",
                 'enable_order_confirmation' => "Создавать подтверждение заказа при выбранном статусе",
                 'order_confirmation_description' => "Этот документ не требует даты оплаты и получает отметку НЕ ОПЛАЧЕНО. Это внутреннее подтверждение, а не счёт-фактура.",
@@ -457,7 +462,13 @@ final class AdminController
             echo '<option value="' . esc_attr($value) . '" ' . selected($settings['language'] ?? 'pl-PL', $value, false) . '>'
                 . esc_html($label) . '</option>';
         }
-        echo '</select></td></tr></table><hr class="cdk-divider"><h3>' . esc_html(self::t('order_confirmation_heading')) . '</h3>';
+        echo '</select></td></tr>';
+        echo '<tr><th>' . esc_html(self::t('pdf_design')) . '</th><td><select name="commerce_documents_wc_settings[pdf_design]">';
+        foreach (DesignCatalog::options(self::adminLanguage()) as $value => $label) {
+            echo '<option value="' . esc_attr($value) . '" ' . selected($settings['pdf_design'] ?? DesignCatalog::CLASSIC, $value, false) . '>'
+                . esc_html($label) . '</option>';
+        }
+        echo '</select><p class="description">' . esc_html(self::t('design_description')) . '</p></td></tr></table><hr class="cdk-divider"><h3>' . esc_html(self::t('order_confirmation_heading')) . '</h3>';
         echo '<input type="hidden" name="commerce_documents_wc_order_confirmation_enabled" value="0">';
         echo '<label><input type="checkbox" name="commerce_documents_wc_order_confirmation_enabled" value="1" '
             . checked($enabled, true, false) . '> ' . esc_html(self::t('enable_order_confirmation')) . '</label>';

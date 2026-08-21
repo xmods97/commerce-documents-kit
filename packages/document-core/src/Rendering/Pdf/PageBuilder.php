@@ -193,6 +193,34 @@ final class PageBuilder
             . '/' . $name . " Do\nQ\n";
     }
 
+    /** Adds a fixed-color filled rectangle. Colors are supplied only by trusted renderer code. */
+    public function fillBox(float $x, float $y, float $width, float $height, float $red, float $green, float $blue): void
+    {
+        $this->pages[$this->current] .= self::number($red) . ' ' . self::number($green) . ' ' . self::number($blue) . " rg\n"
+            . self::number($x) . ' ' . self::number($y) . ' '
+            . self::number($width) . ' ' . self::number($height) . " re\nf\n0 0 0 rg\n";
+    }
+
+    /**
+     * Prepends trusted drawing commands to a completed page. This is used for
+     * backgrounds that must sit behind text after pagination is known.
+     */
+    public function prepend(int $pageIndex, callable $callback): void
+    {
+        if (!isset($this->pages[$pageIndex])) {
+            throw new RuntimeException('Unknown page index.');
+        }
+        $previous = $this->current;
+        $previousY = $this->y;
+        $existing = $this->pages[$pageIndex];
+        $this->current = $pageIndex;
+        $this->pages[$pageIndex] = '';
+        $callback($this);
+        $prefix = $this->pages[$pageIndex];
+        $this->pages[$pageIndex] = $prefix . $existing;
+        $this->current = $previous;
+        $this->y = $previousY;
+    }
     public function box(float $x, float $y, float $width, float $height, float $gray = 0.4): void
     {
         $this->pages[$this->current] .= self::number($gray) . " G\n0.8 w\n"
