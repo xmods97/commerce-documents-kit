@@ -50,7 +50,7 @@ final class CustomerController
         $handle = 'commerce-documents-customer';
         wp_register_style($handle, false, [], '1.0.0');
         wp_enqueue_style($handle);
-        wp_add_inline_style($handle, '.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions{white-space:normal}.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions>a{display:block;width:180px;max-width:100%;box-sizing:border-box;margin:0 0 8px;text-align:center;white-space:nowrap}.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions>a:last-child{margin-bottom:0}');
+        wp_add_inline_style($handle, '.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions{white-space:normal}.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions>a{display:block;width:180px;max-width:100%;box-sizing:border-box;margin:0 0 10px !important;text-align:center;white-space:nowrap}.woocommerce-account .account-orders-table .woocommerce-orders-table__cell-order-actions>a:last-child{margin-bottom:0 !important}');
     }
 
     /** @param array<string, array<string, string>> $actions */
