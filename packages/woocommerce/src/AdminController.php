@@ -132,10 +132,13 @@ final class AdminController
                 'local_mode_description' => "Dokumenty, podglądy PDF i pliki sandbox .eml pozostają lokalnie. Nie wysyłamy poczty zewnętrznej ani danych do Fakturownia lub KSeF.",
                 'start_title' => "Jak działa moduł",
                 'start_description' => "Ustaw dane raz, wybierz moment tworzenia dokumentu, a potem pobieraj PDF z listy dokumentów.",
-                'settings_nav' => "1. Dane i wygląd",
-                'rules_nav' => "2. Reguły automatyczne",
-                'quick_nav' => "3. Utwórz ręcznie",
-                'documents_nav' => "4. Dokumenty",
+                'overview_nav' => "1. Przegląd",
+                'documents_nav' => "2. Dokumenty",
+                'automation_nav' => "3. Automatyzacja",
+                'manual_nav' => "4. Utwórz ręcznie",
+                'settings_nav' => "5. Ustawienia",
+                'rules_nav' => "3. Reguły automatyczne",
+                'quick_nav' => "4. Utwórz ręcznie",
                 'step_settings' => "Dane i wygląd",
                 'step_settings_description' => "Sprzedawca, język i układ PDF.",
                 'step_rules' => "Reguły automatyczne",
@@ -144,6 +147,25 @@ final class AdminController
                 'step_manual_description' => "Awaryjne działanie dla istniejącego zamówienia.",
                 'step_documents' => "Lista dokumentów",
                 'step_documents_description' => "Wyszukiwanie, PDF, audyt i korekty.",
+                'step_overview' => "Przegląd",
+                'step_overview_description' => "Sprawdź gotowość i zrozum dwa typy potwierdzeń.",
+                'step_automation' => "Automatyzacja",
+                'step_automation_description' => "Status pozwala utworzyć dokument; płatność wymaga też daty zapłaty.",
+                'step_settings_short' => "Ustawienia",
+                'step_settings_short_description' => "Dane sprzedawcy, język i wygląd nowych PDF.",
+                'document_model_title' => "Dwa dokumenty, dwa warunki",
+                'order_model' => "Potwierdzenie zamówienia",
+                'order_model_description' => "Powstaje po wybranym statusie zamówienia. Nie wymaga płatności i ma oznaczenie NIEOPŁACONE.",
+                'payment_model' => "Potwierdzenie płatności",
+                'payment_model_description' => "Powstaje dopiero, gdy spełnione są oba warunki: wybrany status oraz zapisana data płatności w WooCommerce.",
+                'payment_requirements' => "Status + data płatności",
+                'payment_requirements_description' => "Sam status zamówienia nigdy nie oznacza, że płatność została potwierdzona.",
+                'setup_attention' => "Wymaga uwagi",
+                'order_statuses_empty' => "Potwierdzenie zamówienia jest włączone, ale nie wybrano statusów.",
+                'order_confirmation_label' => "Potwierdzenie zamówienia",
+                'payment_confirmation_label' => "Potwierdzenie płatności",
+                'correction_label' => "Korekta",
+                'legacy_document_label' => "Dokument archiwalny / inny typ",
                 'documents_shown' => "Widoczne dokumenty",
                 'latest_records' => "Najnowsze chronione rekordy",
                 'filtered_result' => "Wynik filtrowania",
@@ -259,10 +281,13 @@ final class AdminController
                 'local_mode_description' => "Документы, PDF-просмотр и sandbox-файлы .eml остаются локальными. Внешняя почта, Fakturownia и KSeF не используются.",
                 'start_title' => "Как работает модуль",
                 'start_description' => "Один раз заполните данные, выберите момент создания документа, затем скачивайте PDF из списка.",
-                'settings_nav' => "1. Данные и вид PDF",
-                'rules_nav' => "2. Автоматические правила",
-                'quick_nav' => "3. Создать вручную",
-                'documents_nav' => "4. Документы",
+                'overview_nav' => "1. Обзор",
+                'documents_nav' => "2. Документы",
+                'automation_nav' => "3. Автоматизация",
+                'manual_nav' => "4. Создать вручную",
+                'settings_nav' => "5. Настройки",
+                'rules_nav' => "3. Автоматические правила",
+                'quick_nav' => "4. Создать вручную",
                 'step_settings' => "Данные и вид PDF",
                 'step_settings_description' => "Продавец, язык и макет PDF.",
                 'step_rules' => "Автоматические правила",
@@ -271,6 +296,25 @@ final class AdminController
                 'step_manual_description' => "Ручное действие для существующего заказа.",
                 'step_documents' => "Список документов",
                 'step_documents_description' => "Поиск, PDF, аудит и коррекции.",
+                'step_overview' => "Обзор",
+                'step_overview_description' => "Проверьте готовность и разберитесь в двух типах подтверждений.",
+                'step_automation' => "Автоматизация",
+                'step_automation_description' => "Статус разрешает документ; оплата требует также даты оплаты.",
+                'step_settings_short' => "Настройки",
+                'step_settings_short_description' => "Данные продавца, язык и вид новых PDF.",
+                'document_model_title' => "Два документа — два условия",
+                'order_model' => "Подтверждение заказа",
+                'order_model_description' => "Создаётся при выбранном статусе заказа. Оплата не требуется; документ получает отметку НЕ ОПЛАЧЕНО.",
+                'payment_model' => "Подтверждение оплаты",
+                'payment_model_description' => "Создаётся только при одновременном выполнении двух условий: выбранный статус и сохранённая дата оплаты в WooCommerce.",
+                'payment_requirements' => "Статус + дата оплаты",
+                'payment_requirements_description' => "Один только статус заказа никогда не подтверждает оплату.",
+                'setup_attention' => "Требует внимания",
+                'order_statuses_empty' => "Подтверждение заказа включено, но статусы не выбраны.",
+                'order_confirmation_label' => "Подтверждение заказа",
+                'payment_confirmation_label' => "Подтверждение оплаты",
+                'correction_label' => "Коррекция",
+                'legacy_document_label' => "Архивный / другой тип документа",
                 'documents_shown' => "Документов показано",
                 'latest_records' => "Последние защищённые записи",
                 'filtered_result' => "Результат фильтра",
@@ -439,6 +483,7 @@ final class AdminController
 
         echo '<div class="wrap cdk-admin">';
         self::styles();
+        echo '<style>.cdk-guide-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.cdk-model-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.cdk-model-card{padding:16px;border:1px solid #dbe7ef;border-radius:8px;background:#fff}.cdk-model-card p{color:#526172}.cdk-model-card strong,.cdk-model-card small{display:block}.cdk-model-card small{margin-top:5px;color:#667085}@media(max-width:1000px){.cdk-guide-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:782px){.cdk-model-grid{grid-template-columns:1fr}.cdk-guide-grid{grid-template-columns:1fr}}</style>';
         echo '<section class="cdk-hero"><div><p class="cdk-eyebrow">WooCommerce · ' . esc_html(self::t('local_beta')) . '</p>'
             . '<h1>' . esc_html(self::t('plugin_title')) . '</h1>'
             . '<p>' . esc_html(self::t('hero_description')) . '</p></div>'
@@ -448,23 +493,28 @@ final class AdminController
         self::notice();
         echo '<div class="cdk-callout"><strong>' . esc_html(self::t('local_mode')) . '</strong> '
             . esc_html(self::t('local_mode_description')) . '</div>';
-        echo '<section class="cdk-guide" id="cdk-start"><div class="cdk-card__head"><div><h2>' . esc_html(self::t('start_title')) . '</h2><p>' . esc_html(self::t('start_description')) . '</p></div></div><div class="cdk-guide-grid">'
-            . '<a class="cdk-guide-step" href="#cdk-settings"><span class="cdk-guide-step__number">1</span><strong>' . esc_html(self::t('step_settings')) . '</strong><small>' . esc_html(self::t('step_settings_description')) . '</small></a>'
-            . '<a class="cdk-guide-step" href="#cdk-rules"><span class="cdk-guide-step__number">2</span><strong>' . esc_html(self::t('step_rules')) . '</strong><small>' . esc_html(self::t('step_rules_description')) . '</small></a>'
-            . '<a class="cdk-guide-step" href="#cdk-quick-actions"><span class="cdk-guide-step__number">3</span><strong>' . esc_html(self::t('step_manual')) . '</strong><small>' . esc_html(self::t('step_manual_description')) . '</small></a>'
-            . '<a class="cdk-guide-step" href="#cdk-documents"><span class="cdk-guide-step__number">4</span><strong>' . esc_html(self::t('step_documents')) . '</strong><small>' . esc_html(self::t('step_documents_description')) . '</small></a>'
-            . '</div></section>';
+        echo '<section class="cdk-guide" id="cdk-overview"><div class="cdk-card__head"><div><h2>' . esc_html(self::t('start_title')) . '</h2><p>' . esc_html(self::t('start_description')) . '</p></div></div><div class="cdk-guide-grid">'
+            . '<a class="cdk-guide-step" href="#cdk-overview"><span class="cdk-guide-step__number">1</span><strong>' . esc_html(self::t('step_overview')) . '</strong><small>' . esc_html(self::t('step_overview_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="#cdk-documents"><span class="cdk-guide-step__number">2</span><strong>' . esc_html(self::t('step_documents')) . '</strong><small>' . esc_html(self::t('step_documents_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="#cdk-rules"><span class="cdk-guide-step__number">3</span><strong>' . esc_html(self::t('step_automation')) . '</strong><small>' . esc_html(self::t('step_automation_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="#cdk-quick-actions"><span class="cdk-guide-step__number">4</span><strong>' . esc_html(self::t('step_manual')) . '</strong><small>' . esc_html(self::t('step_manual_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="#cdk-settings"><span class="cdk-guide-step__number">5</span><strong>' . esc_html(self::t('step_settings_short')) . '</strong><small>' . esc_html(self::t('step_settings_short_description')) . '</small></a>'
+            . '</div><div class="cdk-model-grid"><article class="cdk-model-card"><h3>' . esc_html(self::t('order_model')) . '</h3><p>' . esc_html(self::t('order_model_description')) . '</p></article><article class="cdk-model-card"><h3>' . esc_html(self::t('payment_model')) . '</h3><p>' . esc_html(self::t('payment_model_description')) . '</p><strong>' . esc_html(self::t('payment_requirements')) . '</strong><small>' . esc_html(self::t('payment_requirements_description')) . '</small></article></div></section>';
         echo '<nav class="cdk-nav" aria-label="' . esc_attr(self::t('sections')) . '">'
-            . '<a href="#cdk-settings"><span>1</span>' . esc_html(self::t('settings_nav')) . '</a>'
-            . '<a href="#cdk-rules"><span>2</span>' . esc_html(self::t('rules_nav')) . '</a>'
-            . '<a href="#cdk-quick-actions"><span>3</span>' . esc_html(self::t('quick_nav')) . '</a>'
-            . '<a href="#cdk-documents"><span>4</span>' . esc_html(self::t('documents_nav')) . '</a></nav>';
+            . '<a href="#cdk-overview"><span>1</span>' . esc_html(self::t('overview_nav')) . '</a>'
+            . '<a href="#cdk-documents"><span>2</span>' . esc_html(self::t('documents_nav')) . '</a>'
+            . '<a href="#cdk-rules"><span>3</span>' . esc_html(self::t('automation_nav')) . '</a>'
+            . '<a href="#cdk-quick-actions"><span>4</span>' . esc_html(self::t('manual_nav')) . '</a>'
+            . '<a href="#cdk-settings"><span>5</span>' . esc_html(self::t('settings_nav')) . '</a></nav>';
         echo '<div class="cdk-summary">'
             . self::summaryCard(self::t('documents_shown'), (string) count($documents), $search === '' ? self::t('latest_records') : self::t('filtered_result'))
             . self::summaryCard(self::t('readable_snapshots'), (string) $readableCount, self::t('encrypted_preview'))
             . self::summaryCard(self::t('seller_profile'), $sellerReadiness[0], $sellerReadiness[1])
             . self::summaryCard(self::t('database_schema'), (string) $migration['installed_version'] . ' / ' . (string) $migration['target_version'], $migration['upgrade_required'] ? self::t('migration_required') : self::t('current'))
             . '</div>';
+        if ($automationEnabled && !$settingsComplete) {
+            echo '<div class="notice notice-warning inline cdk-readiness" role="status"><p><strong>' . esc_html(self::t('setup_attention')) . '</strong> — ' . esc_html(self::t('complete_settings')) . '</p></div>';
+        }
 
         echo '<section class="cdk-card" id="cdk-settings"><div class="cdk-card__head"><div><h2>' . esc_html(self::t('settings_title')) . '</h2>'
             . '<p>' . esc_html(self::t('settings_description')) . '</p></div></div>';
@@ -512,6 +562,9 @@ final class AdminController
                 . '></td></tr>';
         }
         echo '</tbody></table>';
+        if ($enabled && $orderConfirmationStatuses === []) {
+            echo '<div class="notice notice-error inline"><p><strong>' . esc_html(self::t('order_statuses_empty')) . '</strong> ' . esc_html(self::t('select_status_or_disable')) . '</p></div>';
+        }
         echo '<h3>' . esc_html(self::t('payment_confirmation_heading')) . '</h3>';
         echo '<input type="hidden" name="commerce_documents_wc_payment_confirmation_enabled" value="0">';
         echo '<label><input type="checkbox" name="commerce_documents_wc_payment_confirmation_enabled" value="1" '
@@ -625,7 +678,7 @@ final class AdminController
                         ? '<span class="cdk-badge cdk-badge--issued">' . esc_html(self::t('issued')) . '</span>'
                         : '<span class="cdk-badge cdk-badge--unreadable">' . esc_html(self::t('unreadable')) . '</span>');
                 echo '<tr><td>' . esc_html($document['document_number']) . '</td><td>'
-                    . esc_html($document['document_type']) . '</td><td>#' . esc_html($document['source_id'])
+                    . esc_html(self::documentTypeLabel((string) $document['document_type'])) . '</td><td>#' . esc_html($document['source_id'])
                     . '</td><td>' . esc_html($document['created_at'])
                     . '</td><td>' . $state
                     . '</td><td><span class="cdk-audit">' . esc_html((string) $document['audit_count']) . '</span></td><td class="cdk-actions"><div class="cdk-action-stack"><a class="button" target="_blank" href="'
@@ -1201,6 +1254,17 @@ final class AdminController
     private static function codec(): EncryptedSnapshotCodec
     {
         return new EncryptedSnapshotCodec(new OpenSslAesGcmCipher(ConfigKeyProvider::encryptionKey()));
+    }
+
+    private static function documentTypeLabel(string $type): string
+    {
+        return match (strtolower(trim($type))) {
+            'order_confirmation' => self::t('order_confirmation_label'),
+            'payment_confirmation' => self::t('payment_confirmation_label'),
+            'correction' => self::t('correction_label'),
+            'invoice', 'proforma' => self::t('legacy_document_label'),
+            default => self::t('legacy_document_label'),
+        };
     }
 
     private static function summaryCard(string $label, string $value, string $detail): string
