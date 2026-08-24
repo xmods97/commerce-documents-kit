@@ -54,10 +54,44 @@ final class AdminController
             self::t('plugin_title'),
             'manage_woocommerce',
             'commerce-documents',
-            [self::class, 'page']
+            [self::class, 'overviewPage']
         );
+        add_submenu_page('woocommerce', self::t('documents_nav'), self::t('documents_nav'), 'manage_woocommerce', 'commerce-documents-documents', [self::class, 'documentsPage']);
+        add_submenu_page('woocommerce', self::t('automation_nav'), self::t('automation_nav'), 'manage_woocommerce', 'commerce-documents-automation', [self::class, 'automationPage']);
+        add_submenu_page('woocommerce', self::t('manual_nav'), self::t('manual_nav'), 'manage_woocommerce', 'commerce-documents-manual', [self::class, 'manualPage']);
+        add_submenu_page('woocommerce', self::t('settings_nav'), self::t('settings_nav'), 'manage_woocommerce', 'commerce-documents-settings', [self::class, 'settingsPage']);
     }
 
+    public static function overviewPage(): void
+    {
+        self::renderSection('overview');
+    }
+
+    public static function documentsPage(): void
+    {
+        self::renderSection('documents');
+    }
+
+    public static function automationPage(): void
+    {
+        self::renderSection('automation');
+    }
+
+    public static function manualPage(): void
+    {
+        self::renderSection('manual');
+    }
+
+    public static function settingsPage(): void
+    {
+        self::renderSection('settings');
+    }
+
+    private static function renderSection(string $section): void
+    {
+        $_GET['cdk_section'] = $section;
+        self::page();
+    }
     public static function registerSettings(): void
     {
         register_setting('commerce_documents', 'commerce_documents_wc_settings', [
@@ -466,6 +500,13 @@ final class AdminController
         $paymentEnabled = (string) get_option('commerce_documents_wc_payment_confirmation_enabled', '0') === '1';
         $statuses = function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [];
         $search = isset($_GET['cdk_search']) ? sanitize_text_field(wp_unslash($_GET['cdk_search'])) : '';
+        $requestedSection = isset($_GET['cdk_section']) ? sanitize_key(wp_unslash($_GET['cdk_section'])) : 'all';
+        $section = in_array($requestedSection, ['all', 'overview', 'documents', 'automation', 'manual', 'settings'], true)
+            ? $requestedSection
+            : 'all';
+        $sectionUrl = static function (string $target): string {
+            return admin_url('admin.php?page=commerce-documents&cdk_section=' . rawurlencode($target));
+        };
         $documents = self::documents($search);
         $migration = Installer::preflight();
         $resolvedSettings = $settings;
@@ -481,9 +522,10 @@ final class AdminController
             return !empty($document['readable']);
         }));
 
-        echo '<div class="wrap cdk-admin">';
+        echo '<div class="wrap cdk-admin cdk-view-' . esc_attr($section) . '">';
         self::styles();
         echo '<style>.cdk-guide-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.cdk-model-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.cdk-model-card{padding:16px;border:1px solid #dbe7ef;border-radius:8px;background:#fff}.cdk-model-card p{color:#526172}.cdk-model-card strong,.cdk-model-card small{display:block}.cdk-model-card small{margin-top:5px;color:#667085}@media(max-width:1000px){.cdk-guide-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:782px){.cdk-model-grid{grid-template-columns:1fr}.cdk-guide-grid{grid-template-columns:1fr}}</style>';
+        echo '<style>.cdk-view-overview #cdk-settings,.cdk-view-overview #cdk-quick-actions,.cdk-view-overview #cdk-documents{display:none}.cdk-view-documents #cdk-overview,.cdk-view-documents #cdk-settings,.cdk-view-documents #cdk-quick-actions{display:none}.cdk-view-automation #cdk-overview,.cdk-view-automation #cdk-quick-actions,.cdk-view-automation #cdk-documents{display:none}.cdk-view-automation #cdk-settings>.cdk-card__head,.cdk-view-automation #cdk-settings>form> :not(#cdk-automation):not(.submit){display:none}.cdk-view-settings #cdk-overview,.cdk-view-settings #cdk-quick-actions,.cdk-view-settings #cdk-documents,.cdk-view-settings #cdk-automation{display:none}.cdk-view-manual #cdk-overview,.cdk-view-manual #cdk-settings,.cdk-view-manual #cdk-documents{display:none}.cdk-nav a[aria-current="page"]{background:#dff5f3;color:#007f7c}</style>';
         echo '<section class="cdk-hero"><div><p class="cdk-eyebrow">WooCommerce · ' . esc_html(self::t('local_beta')) . '</p>'
             . '<h1>' . esc_html(self::t('plugin_title')) . '</h1>'
             . '<p>' . esc_html(self::t('hero_description')) . '</p></div>'
@@ -494,18 +536,18 @@ final class AdminController
         echo '<div class="cdk-callout"><strong>' . esc_html(self::t('local_mode')) . '</strong> '
             . esc_html(self::t('local_mode_description')) . '</div>';
         echo '<section class="cdk-guide" id="cdk-overview"><div class="cdk-card__head"><div><h2>' . esc_html(self::t('start_title')) . '</h2><p>' . esc_html(self::t('start_description')) . '</p></div></div><div class="cdk-guide-grid">'
-            . '<a class="cdk-guide-step" href="#cdk-overview"><span class="cdk-guide-step__number">1</span><strong>' . esc_html(self::t('step_overview')) . '</strong><small>' . esc_html(self::t('step_overview_description')) . '</small></a>'
-            . '<a class="cdk-guide-step" href="#cdk-documents"><span class="cdk-guide-step__number">2</span><strong>' . esc_html(self::t('step_documents')) . '</strong><small>' . esc_html(self::t('step_documents_description')) . '</small></a>'
-            . '<a class="cdk-guide-step" href="#cdk-rules"><span class="cdk-guide-step__number">3</span><strong>' . esc_html(self::t('step_automation')) . '</strong><small>' . esc_html(self::t('step_automation_description')) . '</small></a>'
-            . '<a class="cdk-guide-step" href="#cdk-quick-actions"><span class="cdk-guide-step__number">4</span><strong>' . esc_html(self::t('step_manual')) . '</strong><small>' . esc_html(self::t('step_manual_description')) . '</small></a>'
-            . '<a class="cdk-guide-step" href="#cdk-settings"><span class="cdk-guide-step__number">5</span><strong>' . esc_html(self::t('step_settings_short')) . '</strong><small>' . esc_html(self::t('step_settings_short_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="' . esc_url($sectionUrl('overview')) . '"><span class="cdk-guide-step__number">1</span><strong>' . esc_html(self::t('step_overview')) . '</strong><small>' . esc_html(self::t('step_overview_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="' . esc_url($sectionUrl('documents')) . '"><span class="cdk-guide-step__number">2</span><strong>' . esc_html(self::t('step_documents')) . '</strong><small>' . esc_html(self::t('step_documents_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="' . esc_url($sectionUrl('automation')) . '"><span class="cdk-guide-step__number">3</span><strong>' . esc_html(self::t('step_automation')) . '</strong><small>' . esc_html(self::t('step_automation_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="' . esc_url($sectionUrl('manual')) . '"><span class="cdk-guide-step__number">4</span><strong>' . esc_html(self::t('step_manual')) . '</strong><small>' . esc_html(self::t('step_manual_description')) . '</small></a>'
+            . '<a class="cdk-guide-step" href="' . esc_url($sectionUrl('settings')) . '"><span class="cdk-guide-step__number">5</span><strong>' . esc_html(self::t('step_settings_short')) . '</strong><small>' . esc_html(self::t('step_settings_short_description')) . '</small></a>'
             . '</div><div class="cdk-model-grid"><article class="cdk-model-card"><h3>' . esc_html(self::t('order_model')) . '</h3><p>' . esc_html(self::t('order_model_description')) . '</p></article><article class="cdk-model-card"><h3>' . esc_html(self::t('payment_model')) . '</h3><p>' . esc_html(self::t('payment_model_description')) . '</p><strong>' . esc_html(self::t('payment_requirements')) . '</strong><small>' . esc_html(self::t('payment_requirements_description')) . '</small></article></div></section>';
         echo '<nav class="cdk-nav" aria-label="' . esc_attr(self::t('sections')) . '">'
-            . '<a href="#cdk-overview"><span>1</span>' . esc_html(self::t('overview_nav')) . '</a>'
-            . '<a href="#cdk-documents"><span>2</span>' . esc_html(self::t('documents_nav')) . '</a>'
-            . '<a href="#cdk-rules"><span>3</span>' . esc_html(self::t('automation_nav')) . '</a>'
-            . '<a href="#cdk-quick-actions"><span>4</span>' . esc_html(self::t('manual_nav')) . '</a>'
-            . '<a href="#cdk-settings"><span>5</span>' . esc_html(self::t('settings_nav')) . '</a></nav>';
+            . '<a href="' . esc_url($sectionUrl('overview')) . '" ' . ($section === 'overview' ? 'aria-current="page"' : '') . '><span>1</span>' . esc_html(self::t('overview_nav')) . '</a>'
+            . '<a href="' . esc_url($sectionUrl('documents')) . '" ' . ($section === 'documents' ? 'aria-current="page"' : '') . '><span>2</span>' . esc_html(self::t('documents_nav')) . '</a>'
+            . '<a href="' . esc_url($sectionUrl('automation')) . '" ' . ($section === 'automation' ? 'aria-current="page"' : '') . '><span>3</span>' . esc_html(self::t('automation_nav')) . '</a>'
+            . '<a href="' . esc_url($sectionUrl('manual')) . '" ' . ($section === 'manual' ? 'aria-current="page"' : '') . '><span>4</span>' . esc_html(self::t('manual_nav')) . '</a>'
+            . '<a href="' . esc_url($sectionUrl('settings')) . '" ' . ($section === 'settings' ? 'aria-current="page"' : '') . '><span>5</span>' . esc_html(self::t('settings_nav')) . '</a></nav>';
         echo '<div class="cdk-summary">'
             . self::summaryCard(self::t('documents_shown'), (string) count($documents), $search === '' ? self::t('latest_records') : self::t('filtered_result'))
             . self::summaryCard(self::t('readable_snapshots'), (string) $readableCount, self::t('encrypted_preview'))
@@ -547,7 +589,7 @@ final class AdminController
             echo '<option value="' . esc_attr($value) . '" ' . selected($settings['pdf_design'] ?? DesignCatalog::CLASSIC, $value, false) . '>'
                 . esc_html($label) . '</option>';
         }
-        echo '</select><p class="description">' . esc_html(self::t('design_description')) . '</p></td></tr></table><div id="cdk-rules" class="cdk-subsection"><h3>' . esc_html(self::t('order_confirmation_heading')) . '</h3>';
+        echo '</select><p class="description">' . esc_html(self::t('design_description')) . '</p></td></tr></table><div id="cdk-automation" class="cdk-automation-panel"><div class="cdk-card__head"><div><h2>' . esc_html(self::t('step_automation')) . '</h2><p>' . esc_html(self::t('step_automation_description')) . '</p></div></div><div id="cdk-rules" class="cdk-subsection"><h3>' . esc_html(self::t('order_confirmation_heading')) . '</h3>';
         echo '<input type="hidden" name="commerce_documents_wc_order_confirmation_enabled" value="0">';
         echo '<label><input type="checkbox" name="commerce_documents_wc_order_confirmation_enabled" value="1" '
             . checked($enabled, true, false) . '> ' . esc_html(self::t('enable_order_confirmation')) . '</label>';
@@ -594,7 +636,7 @@ final class AdminController
             . esc_attr($offlineMethods) . '" placeholder="' . esc_attr(self::t('offline_methods_placeholder')) . '"></p>'
             . '<p class="description">' . esc_html(self::t('offline_description')) . '</p>'
             . '</td></tr></table>';
-        echo '</div>';
+        echo '</div></div>';
         submit_button(self::t('save_settings'));
         echo '</form></section>';
 
@@ -622,7 +664,7 @@ final class AdminController
 
         echo '<section class="cdk-card" id="cdk-documents"><div class="cdk-card__head cdk-card__head--documents"><div><h2>' . esc_html(self::t('documents_title')) . '</h2>'
             . '<p>' . esc_html(self::t('documents_description')) . '</p></div>';
-        echo '<form method="get" class="cdk-search"><input type="hidden" name="page" value="commerce-documents">'
+        echo '<form method="get" class="cdk-search"><input type="hidden" name="page" value="commerce-documents"><input type="hidden" name="cdk_section" value="documents">'
             . '<input type="search" name="cdk_search" value="' . esc_attr($search) . '" placeholder="' . esc_attr(self::t('search_placeholder')) . '"> '
             . '<button class="button">' . esc_html(self::t('search')) . '</button></form></div>';
         echo '<details class="cdk-migration"><summary>' . esc_html(self::t('schema')) . ' · ' . esc_html((string) $migration['installed_version'])
