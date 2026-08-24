@@ -303,7 +303,7 @@ final class AdminController
                 'offline_description' => "WooCommerce nie zapisuje daty płatności dla metod offline, dlatego są domyślnie nieopłacone. Używaj ich tylko przy ręcznym tworzeniu potwierdzenia pobrania.",
                 'rollback_manual' => "Cofnięcie migracji jest ręczne. Installer::rollbackPlan() pokaże dokładne instrukcje dla przywróconej kopii bazy.",
                 'sections' => "Sekcje dokumentów Commerce Documents",
-                'plugin_title' => "Commerce Documents",
+                'plugin_title' => "Dokumenty zamówień",
                 'operation_failed' => "Operacja nie powiodła się.",
             ],
             'ru' => [
@@ -456,7 +456,7 @@ final class AdminController
                 'offline_description' => "WooCommerce не записывает дату оплаты для офлайн-методов, поэтому они по умолчанию считаются неоплаченными. Используйте их только для ручного создания подтверждения наложенного платежа.",
                 'rollback_manual' => "Откат миграции выполняется вручную. Installer::rollbackPlan() покажет точные инструкции для восстановленной копии базы.",
                 'sections' => "Разделы Commerce Documents",
-                'plugin_title' => "Документы Commerce",
+                'plugin_title' => "Документы заказов",
                 'operation_failed' => "Операция не выполнена.",
             ],
         ];
