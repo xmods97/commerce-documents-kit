@@ -194,6 +194,7 @@ final class AdminController
                 'payment_model_description' => "Powstaje dopiero, gdy spełnione są oba warunki: wybrany status oraz zapisana data płatności w WooCommerce.",
                 'payment_requirements' => "Status + data płatności",
                 'payment_requirements_description' => "Sam status zamówienia nigdy nie oznacza, że płatność została potwierdzona.",
+                'configure_rules' => "Ustaw reguły",
                 'setup_attention' => "Wymaga uwagi",
                 'order_statuses_empty' => "Potwierdzenie zamówienia jest włączone, ale nie wybrano statusów.",
                 'order_confirmation_label' => "Potwierdzenie zamówienia",
@@ -347,6 +348,7 @@ final class AdminController
                 'payment_model_description' => "Создаётся только при одновременном выполнении двух условий: выбранный статус и сохранённая дата оплаты в WooCommerce.",
                 'payment_requirements' => "Статус + дата оплаты",
                 'payment_requirements_description' => "Один только статус заказа никогда не подтверждает оплату.",
+                'configure_rules' => "Настроить правила",
                 'setup_attention' => "Требует внимания",
                 'order_statuses_empty' => "Подтверждение заказа включено, но статусы не выбраны.",
                 'order_confirmation_label' => "Подтверждение заказа",
@@ -567,7 +569,7 @@ final class AdminController
             . '<a class="cdk-guide-step" href="' . esc_url($sectionUrl('automation')) . '"><span class="cdk-guide-step__number">3</span><strong>' . esc_html(self::t('step_automation')) . '</strong><small>' . esc_html(self::t('step_automation_description')) . '</small></a>'
             . '<a class="cdk-guide-step" href="' . esc_url($sectionUrl('manual')) . '"><span class="cdk-guide-step__number">4</span><strong>' . esc_html(self::t('step_manual')) . '</strong><small>' . esc_html(self::t('step_manual_description')) . '</small></a>'
             . '<a class="cdk-guide-step" href="' . esc_url($sectionUrl('settings')) . '"><span class="cdk-guide-step__number">5</span><strong>' . esc_html(self::t('step_settings_short')) . '</strong><small>' . esc_html(self::t('step_settings_short_description')) . '</small></a>'
-            . '</div><div class="cdk-model-grid"><article class="cdk-model-card"><h3>' . esc_html(self::t('order_model')) . '</h3><p class="cdk-rule-status"><strong>' . esc_html($orderRuleReadiness[0]) . '</strong> — ' . esc_html($orderRuleReadiness[1]) . '</p><p>' . esc_html(self::t('order_model_description')) . '</p></article><article class="cdk-model-card"><h3>' . esc_html(self::t('payment_model')) . '</h3><p class="cdk-rule-status"><strong>' . esc_html($paymentRuleReadiness[0]) . '</strong> — ' . esc_html($paymentRuleReadiness[1]) . '</p><p>' . esc_html(self::t('payment_model_description')) . '</p><strong>' . esc_html(self::t('payment_requirements')) . '</strong><small>' . esc_html(self::t('payment_requirements_description')) . '</small></article></div></section>';
+            . '</div><div class="cdk-model-grid"><article class="cdk-model-card"><h3>' . esc_html(self::t('order_model')) . '</h3><p class="cdk-rule-status"><strong>' . esc_html($orderRuleReadiness[0]) . '</strong> — ' . esc_html($orderRuleReadiness[1]) . '</p><p>' . esc_html(self::t('order_model_description')) . '</p><a class="button button-secondary" href="' . esc_url($sectionUrl('automation')) . '">' . esc_html(self::t('configure_rules')) . '</a></article><article class="cdk-model-card"><h3>' . esc_html(self::t('payment_model')) . '</h3><p class="cdk-rule-status"><strong>' . esc_html($paymentRuleReadiness[0]) . '</strong> — ' . esc_html($paymentRuleReadiness[1]) . '</p><p>' . esc_html(self::t('payment_model_description')) . '</p><strong>' . esc_html(self::t('payment_requirements')) . '</strong><small>' . esc_html(self::t('payment_requirements_description')) . '</small><a class="button button-secondary" href="' . esc_url($sectionUrl('automation')) . '">' . esc_html(self::t('configure_rules')) . '</a></article></div></section>';
         echo '<nav class="cdk-nav" aria-label="' . esc_attr(self::t('sections')) . '">'
             . '<a href="' . esc_url($sectionUrl('overview')) . '" ' . ($section === 'overview' ? 'aria-current="page"' : '') . '><span>1</span>' . esc_html(self::t('overview_nav')) . '</a>'
             . '<a href="' . esc_url($sectionUrl('documents')) . '" ' . ($section === 'documents' ? 'aria-current="page"' : '') . '><span>2</span>' . esc_html(self::t('documents_nav')) . '</a>'
