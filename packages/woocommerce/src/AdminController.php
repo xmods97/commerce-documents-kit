@@ -261,7 +261,8 @@ final class AdminController
                 'create_paid' => "Utwórz opłacone potwierdzenie",
                 'create_unpaid_cod' => "Utwórz nieopłacone potwierdzenie pobrania",
                 'documents_title' => "Utworzone dokumenty",
-                'documents_description' => "Szukaj po zamówieniu, typie lub ID dokumentu. Numery dokumentów są zaszyfrowane.",
+                'order_group' => "Zamówienie",
+                'documents_description' => "Szukaj po zamówieniu lub typie dokumentu. Numery są chronione i można je otworzyć jako PDF.",
                 'search_placeholder' => "Numer, zamówienie, typ lub ID dokumentu",
                 'search' => "Szukaj",
                 'schema' => "Schemat bazy",
@@ -286,6 +287,9 @@ final class AdminController
                 'view' => "Podgląd",
                 'preview_pdf' => "Podgląd PDF",
                 'download_pdf' => "Pobierz PDF",
+                'pdf_short' => "PDF",
+                'download_short' => "Pobierz",
+                'sandbox_short' => "Sandbox",
                 'sandbox_email' => "Sandbox e-mail",
                 'correction' => "Korekta",
                 'buyer_name' => "Poprawiona nazwa nabywcy",
@@ -410,7 +414,8 @@ final class AdminController
                 'create_paid' => "Создать подтверждение оплаты",
                 'create_unpaid_cod' => "Создать неоплаченное подтверждение наложенного платежа",
                 'documents_title' => "Созданные документы",
-                'documents_description' => "Поиск по заказу, типу или ID документа. Номера документов зашифрованы.",
+                'order_group' => "Заказ",
+                'documents_description' => "Ищите по заказу или типу документа. Номера защищены, документ можно открыть как PDF.",
                 'search_placeholder' => "Номер, заказ, тип или ID документа",
                 'search' => "Найти",
                 'schema' => "Схема базы",
@@ -435,6 +440,9 @@ final class AdminController
                 'view' => "Просмотр",
                 'preview_pdf' => "Просмотр PDF",
                 'download_pdf' => "Скачать PDF",
+                'pdf_short' => "PDF",
+                'download_short' => "Скачать",
+                'sandbox_short' => "Sandbox",
                 'sandbox_email' => "Sandbox e-mail",
                 'correction' => "Коррекция",
                 'buyer_name' => "Исправленное имя покупателя",
@@ -504,8 +512,15 @@ final class AdminController
         $section = in_array($requestedSection, ['all', 'overview', 'documents', 'automation', 'manual', 'settings'], true)
             ? $requestedSection
             : 'all';
-        $sectionUrl = static function (string $target): string {
-            return admin_url('admin.php?page=commerce-documents&cdk_section=' . rawurlencode($target));
+        $sectionSlugs = [
+            'overview' => 'commerce-documents',
+            'documents' => 'commerce-documents-documents',
+            'automation' => 'commerce-documents-automation',
+            'manual' => 'commerce-documents-manual',
+            'settings' => 'commerce-documents-settings',
+        ];
+        $sectionUrl = static function (string $target) use ($sectionSlugs): string {
+            return admin_url('admin.php?page=' . rawurlencode($sectionSlugs[$target] ?? $sectionSlugs['overview']));
         };
         $documents = self::documents($search);
         $migration = Installer::preflight();
@@ -526,6 +541,7 @@ final class AdminController
         self::styles();
         echo '<style>.cdk-guide-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.cdk-model-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.cdk-model-card{padding:16px;border:1px solid #dbe7ef;border-radius:8px;background:#fff}.cdk-model-card p{color:#526172}.cdk-model-card strong,.cdk-model-card small{display:block}.cdk-model-card small{margin-top:5px;color:#667085}@media(max-width:1000px){.cdk-guide-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:782px){.cdk-model-grid{grid-template-columns:1fr}.cdk-guide-grid{grid-template-columns:1fr}}</style>';
         echo '<style>.cdk-view-overview #cdk-settings,.cdk-view-overview #cdk-quick-actions,.cdk-view-overview #cdk-documents{display:none}.cdk-view-documents #cdk-overview,.cdk-view-documents #cdk-settings,.cdk-view-documents #cdk-quick-actions{display:none}.cdk-view-automation #cdk-overview,.cdk-view-automation #cdk-quick-actions,.cdk-view-automation #cdk-documents{display:none}.cdk-view-automation #cdk-settings>.cdk-card__head,.cdk-view-automation #cdk-settings>form> :not(#cdk-automation):not(.submit){display:none}.cdk-view-settings #cdk-overview,.cdk-view-settings #cdk-quick-actions,.cdk-view-settings #cdk-documents,.cdk-view-settings #cdk-automation{display:none}.cdk-view-manual #cdk-overview,.cdk-view-manual #cdk-settings,.cdk-view-manual #cdk-documents{display:none}.cdk-nav a[aria-current="page"]{background:#dff5f3;color:#007f7c}</style>';
+        echo '<style>.cdk-order-group th{padding:10px 12px;background:#eef7f7;color:#155e63;border-top:2px solid #c8e5e5;font-size:12px;text-align:left}.cdk-order-group+tr td{border-top:0}</style>';
         echo '<section class="cdk-hero"><div><p class="cdk-eyebrow">WooCommerce · ' . esc_html(self::t('local_beta')) . '</p>'
             . '<h1>' . esc_html(self::t('plugin_title')) . '</h1>'
             . '<p>' . esc_html(self::t('hero_description')) . '</p></div>'
@@ -664,7 +680,7 @@ final class AdminController
 
         echo '<section class="cdk-card" id="cdk-documents"><div class="cdk-card__head cdk-card__head--documents"><div><h2>' . esc_html(self::t('documents_title')) . '</h2>'
             . '<p>' . esc_html(self::t('documents_description')) . '</p></div>';
-        echo '<form method="get" class="cdk-search"><input type="hidden" name="page" value="commerce-documents"><input type="hidden" name="cdk_section" value="documents">'
+        echo '<form method="get" class="cdk-search"><input type="hidden" name="page" value="commerce-documents-documents"><input type="hidden" name="cdk_section" value="documents">'
             . '<input type="search" name="cdk_search" value="' . esc_attr($search) . '" placeholder="' . esc_attr(self::t('search_placeholder')) . '"> '
             . '<button class="button">' . esc_html(self::t('search')) . '</button></form></div>';
         echo '<details class="cdk-migration"><summary>' . esc_html(self::t('schema')) . ' · ' . esc_html((string) $migration['installed_version'])
@@ -694,7 +710,13 @@ final class AdminController
         } else {
             echo '<div class="cdk-table-wrap"><table class="widefat striped cdk-documents"><thead><tr><th>' . esc_html(self::t('number')) . '</th><th>' . esc_html(self::t('type')) . '</th><th>' . esc_html(self::t('order')) . '</th><th>' . esc_html(self::t('created')) . '</th>'
                 . '<th>' . esc_html(self::t('state')) . '</th><th>' . esc_html(self::t('audit')) . '</th><th>' . esc_html(self::t('actions')) . '</th></tr></thead><tbody>';
+            $documentGroups = [];
             foreach ($documents as $document) {
+                $documentGroups[(string) $document['source_id']][] = $document;
+            }
+            foreach ($documentGroups as $groupOrderId => $groupDocuments) {
+                echo '<tr class="cdk-order-group"><th colspan="7">' . esc_html(self::t('order_group')) . ' #' . esc_html((string) $groupOrderId) . '</th></tr>';
+                foreach ($groupDocuments as $document) {
                 $url = wp_nonce_url(
                     admin_url('admin-post.php?action=commerce_documents_view&document_id=' . rawurlencode($document['document_id'])),
                     'commerce_documents_view_' . $document['document_id']
@@ -726,13 +748,13 @@ final class AdminController
                     . '</td><td><span class="cdk-audit">' . esc_html((string) $document['audit_count']) . '</span></td><td class="cdk-actions"><div class="cdk-action-stack"><a class="button" target="_blank" href="'
                     . esc_url($url) . '">' . esc_html(self::t('view')) . '</a>';
                 if ($document['readable']) {
-                    echo ' <a class="button" target="_blank" href="' . esc_url($pdfUrl) . '">' . esc_html(self::t('preview_pdf')) . '</a>';
-                    echo ' <a class="button" href="' . esc_url($downloadPdfUrl) . '">' . esc_html(self::t('download_pdf')) . '</a>';
+                    echo ' <a class="button" target="_blank" href="' . esc_url($pdfUrl) . '">' . esc_html(self::t('pdf_short')) . '</a>';
+                    echo ' <a class="button" href="' . esc_url($downloadPdfUrl) . '">' . esc_html(self::t('download_short')) . '</a>';
                     echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" class="cdk-inline-form">'
                         . '<input type="hidden" name="action" value="commerce_documents_sandbox_email">'
                         . '<input type="hidden" name="document_id" value="' . esc_attr($document['document_id']) . '">'
                         . wp_nonce_field('commerce_documents_sandbox_email_' . $document['document_id'], '_wpnonce', true, false)
-                        . '<button class="button" type="submit">' . esc_html(self::t('sandbox_email')) . '</button></form>';
+                        . '<button class="button" type="submit">' . esc_html(self::t('sandbox_short')) . '</button></form>';
                 }
                 if ($supersededBy === '' && $document['readable']) {
                     // The token is minted once per rendered form, so a resubmitted or
@@ -747,6 +769,7 @@ final class AdminController
                         . '<button class="button">' . esc_html(self::t('correction')) . '</button></form>';
                 }
                 echo '</div></td></tr>';
+            }
             }
             echo '</tbody></table></div>';
         }
