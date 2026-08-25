@@ -1335,13 +1335,18 @@ final class AdminController
 
     private static function documentTypeLabel(string $type): string
     {
-        return match (strtolower(trim($type))) {
-            'order_confirmation' => self::t('order_confirmation_label'),
-            'payment_confirmation' => self::t('payment_confirmation_label'),
-            'correction' => self::t('correction_label'),
-            'invoice', 'proforma' => self::t('legacy_document_label'),
-            default => self::t('legacy_document_label'),
-        };
+        switch (strtolower(trim($type))) {
+            case 'order_confirmation':
+                return self::t('order_confirmation_label');
+            case 'payment_confirmation':
+                return self::t('payment_confirmation_label');
+            case 'correction':
+                return self::t('correction_label');
+            case 'invoice':
+            case 'proforma':
+            default:
+                return self::t('legacy_document_label');
+        }
     }
 
     private static function summaryCard(string $label, string $value, string $detail): string
