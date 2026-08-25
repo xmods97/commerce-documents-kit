@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Xmods\CommerceDocuments\Tests;
 
 use PHPUnit\Framework\TestCase;
+use InvalidArgumentException;
 use RuntimeException;
 use Xmods\CommerceDocuments\WordPress\SandboxMailer;
 

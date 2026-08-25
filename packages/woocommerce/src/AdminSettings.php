@@ -30,14 +30,22 @@ final class AdminSettings
         if (!in_array($codPolicy, [PaidOrderPolicy::COD_POLICY_NEVER, PaidOrderPolicy::COD_POLICY_STATUS_ONLY], true)) {
             $codPolicy = PaidOrderPolicy::COD_POLICY_NEVER;
         }
-        $offlineMethods = array_values(array_filter(array_map(
-            static function ($method): string {
-                return strtolower(trim((string) $method));
-            },
-            preg_split('/[\s,]+/', (string) ($input['cod_offline_methods'] ?? '')) ?: []
-        ), static function (string $method): bool {
-            return $method !== '' && preg_match('/^[a-z0-9_\-]{1,64}$/D', $method) === 1;
-        }));
+        $offlineMethods = [];
+        foreach (preg_split('/\s*,\s*/', (string) ($input['cod_offline_methods'] ?? '')) ?: [] as $group) {
+            $group = trim($group);
+            if ($group === '' || preg_match('/^[a-z0-9_\-]+(?:\s+[a-z0-9_\-]+)*$/iD', $group) !== 1) {
+                continue;
+            }
+            foreach (preg_split('/\s+/', $group) ?: [] as $method) {
+                $offlineMethods[] = strtolower($method);
+            }
+        }
+        $offlineMethods = array_values(array_unique(array_filter(
+            $offlineMethods,
+            static function (string $method): bool {
+                return preg_match('/^[a-z0-9_\-]{1,64}$/D', $method) === 1;
+            }
+        )));
 
         $orderConfirmationStatuses = array_key_exists('order_confirmation_statuses_present', $input)
             ? $cleanStatuses($input['order_confirmation_statuses'] ?? [])
