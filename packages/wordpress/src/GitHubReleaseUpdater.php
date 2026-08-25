@@ -259,7 +259,9 @@ final class GitHubReleaseUpdater
             return null;
         }
 
-        $checksumBody = $this->apiGetBody((string) $checksum['url'], 'text/plain');
+        // GitHub's release-asset API requires the binary asset media type here,
+        // including for a plain-text checksum asset.
+        $checksumBody = $this->apiGetBody((string) $checksum['url'], 'application/octet-stream');
         $sha256 = $this->parseChecksum($checksumBody);
         if ($sha256 === null) {
             return null;
