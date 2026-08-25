@@ -14,7 +14,12 @@ final class OrderConfirmationPolicy implements OrderGenerationPolicy
     private $statuses;
 
     /** @param string[] $statuses */
-    public function __construct(array $statuses, string $name = 'order-created-confirmation', int $version = 1)
+    public function __construct(
+        array $statuses,
+        string $name = 'order-created-confirmation',
+        int $version = 1,
+        bool $rebuild = false
+    )
     {
         $this->statuses = array_values(array_unique(array_map('strval', $statuses)));
         if ($this->statuses === [] || trim($name) === '' || $version < 1) {
@@ -22,20 +27,25 @@ final class OrderConfirmationPolicy implements OrderGenerationPolicy
         }
         $this->name = trim($name);
         $this->version = $version;
+        $this->rebuild = $rebuild;
     }
 
     /** @var string */
     private $name;
     /** @var int */
     private $version;
+    /** @var bool */
+    private $rebuild;
 
     public function documentTypeFor(OrderData $order): ?DocumentType
     {
         // Some gateways confirm payment inside the checkout request before this
         // hook runs. Do not backdate an immutable "unpaid" document then; the
         // payment-confirmation policy owns that case.
-        return $order->paidAt === ''
-            && in_array($order->status, $this->statuses, true)
+        return ($this->rebuild || (
+                $order->paidAt === ''
+                && in_array($order->status, $this->statuses, true)
+            ))
             ? DocumentType::fromString(DocumentType::ORDER_CONFIRMATION)
             : null;
     }

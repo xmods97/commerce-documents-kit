@@ -21,4 +21,17 @@ final class GitHubReleaseUpdaterTest extends TestCase
         self::assertStringContainsString('GitHubReleaseUpdater::boot(__FILE__)', $entry);
         self::assertStringNotContainsString("update_option('commerce_documents_github_token'", $updater);
     }
+
+    public function testReleaseWorkflowPublishesTheVerifiedPluginAssets(): void
+    {
+        $workflow = file_get_contents(
+            dirname(__DIR__, 2) . '/.github/workflows/release.yml'
+        );
+
+        self::assertStringContainsString("- 'v*.*.*'", $workflow);
+        self::assertStringContainsString('tools/build-woocommerce.ps1', $workflow);
+        self::assertStringContainsString('commerce-documents-woocommerce.zip', $workflow);
+        self::assertStringContainsString('commerce-documents-woocommerce.zip.sha256', $workflow);
+        self::assertStringContainsString('gh release create', $workflow);
+    }
 }

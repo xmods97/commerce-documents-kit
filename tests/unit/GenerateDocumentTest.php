@@ -58,6 +58,24 @@ final class GenerateDocumentTest extends TestCase
         self::assertSame('Original Buyer', $original->toArray()['buyer']['name']);
     }
 
+    public function testRebuildCanUseSeparateIdempotencySourceWithoutChangingOrderSource(): void
+    {
+        $repository = new MemoryRepository();
+        $service = new GenerateDocument($repository, new SequentialNumbers(), new MemoryEvents());
+
+        $original = $service->execute($this->request('Original Buyer'));
+        $rebuild = $this->request('Current Buyer');
+        $rebuild->useIdempotencySource('commerce_documents_rebuild', $original->toArray()['document_id']);
+
+        $rebuilt = $service->execute($rebuild);
+
+        self::assertNotSame($original, $rebuilt);
+        self::assertSame('woocommerce_order', $rebuilt->toArray()['source_type']);
+        self::assertSame('42', $rebuilt->toArray()['source_id']);
+        self::assertSame('Current Buyer', $rebuilt->toArray()['buyer']['name']);
+        self::assertSame(2, $repository->saveCount);
+    }
+
     public function testAtomicSavePreventsDuplicateDuringConcurrentRace(): void
     {
         $repository = new RacingRepository();

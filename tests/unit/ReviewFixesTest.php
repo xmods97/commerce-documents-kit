@@ -20,6 +20,7 @@ use Xmods\CommerceDocuments\Rendering\BasicPdfRenderer;
 use Xmods\CommerceDocuments\Rendering\PdfTextEncoding;
 use Xmods\CommerceDocuments\TaxRate;
 use Xmods\CommerceDocuments\WooCommerce\OrderData;
+use Xmods\CommerceDocuments\WooCommerce\OrderConfirmationPolicy;
 use Xmods\CommerceDocuments\WooCommerce\PaidOrderPolicy;
 use Xmods\CommerceDocuments\WordPress\AuditChainVerifier;
 use Xmods\CommerceDocuments\WordPress\SandboxMailer;
@@ -69,6 +70,18 @@ final class ReviewFixesTest extends TestCase
         self::assertNotNull($enrolled->documentTypeFor($order));
         self::assertSame('yes', $enrolled->decision($order)['payment_confirmed']);
         self::assertSame('offline_status_confirmed', $enrolled->decision($order)['payment_status']);
+    }
+
+    public function testExplicitOrderRebuildKeepsTheUnpaidConfirmationType(): void
+    {
+        $policy = new OrderConfirmationPolicy(['pending'], 'order-rebuild-confirmation', 1, true);
+        $order = $this->order('completed', '2026-08-11T10:00:00+00:00', 'stripe');
+
+        self::assertSame(
+            DocumentType::ORDER_CONFIRMATION,
+            $policy->documentTypeFor($order)->value()
+        );
+        self::assertSame('unpaid', $policy->decision($order)['payment_badge']);
     }
 
     // ---- H5: audit chain -----------------------------------------------------

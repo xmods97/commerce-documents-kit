@@ -41,6 +41,7 @@ final class AdminController
         add_action('admin_post_commerce_documents_preview_pdf', [self::class, 'previewPdf']);
         add_action('admin_post_commerce_documents_download_pdf', [self::class, 'downloadPdf']);
         add_action('admin_post_commerce_documents_sandbox_email', [self::class, 'sandboxEmail']);
+        add_action('admin_post_commerce_documents_rebuild', [self::class, 'rebuild']);
         add_action('admin_post_commerce_documents_migrate', [self::class, 'migrate']);
         add_action('admin_post_commerce_documents_correct', [self::class, 'correct']);
         add_action('admin_post_commerce_documents_set_admin_language', [self::class, 'setAdminLanguage']);
@@ -292,6 +293,7 @@ final class AdminController
                 'download_short' => "Pobierz",
                 'sandbox_short' => "Sandbox",
                 'sandbox_email' => "Sandbox e-mail",
+                'rebuild_from_order' => "Odtwórz z zamówienia",
                 'correction' => "Korekta",
                 'buyer_name' => "Poprawiona nazwa nabywcy",
                 'correction_note' => "Opis korekty",
@@ -446,6 +448,7 @@ final class AdminController
                 'download_short' => "Скачать",
                 'sandbox_short' => "Sandbox",
                 'sandbox_email' => "Sandbox e-mail",
+                'rebuild_from_order' => "Восстановить из заказа",
                 'correction' => "Коррекция",
                 'buyer_name' => "Исправленное имя покупателя",
                 'correction_note' => "Причина коррекции",
@@ -768,6 +771,19 @@ final class AdminController
                         . wp_nonce_field('commerce_documents_sandbox_email_' . $document['document_id'], '_wpnonce', true, false)
                         . '<button class="button" type="submit">' . esc_html(self::t('sandbox_short')) . '</button></form>';
                 }
+                if (!$document['readable']
+                    && $supersededBy === ''
+                    && in_array((string) $document['document_type'], [
+                        DocumentType::ORDER_CONFIRMATION,
+                        DocumentType::PAYMENT_CONFIRMATION,
+                    ], true)
+                ) {
+                    echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" class="cdk-inline-form">'
+                        . '<input type="hidden" name="action" value="commerce_documents_rebuild">'
+                        . '<input type="hidden" name="document_id" value="' . esc_attr($document['document_id']) . '">'
+                        . wp_nonce_field('commerce_documents_rebuild_' . $document['document_id'], '_wpnonce', true, false)
+                        . '<button class="button" type="submit">' . esc_html(self::t('rebuild_from_order')) . '</button></form>';
+                }
                 if ($supersededBy === '' && $document['readable']) {
                     // The token is minted once per rendered form, so a resubmitted or
                     // double-clicked form resolves to the same idempotency key.
@@ -928,6 +944,102 @@ final class AdminController
             Plugin::generateOrderConfirmationForOrder($order);
             self::redirect('generated');
         } catch (Throwable $error) {
+            self::redirect('failed', $error->getMessage());
+        }
+    }
+
+    public static function rebuild(): void
+    {
+        $documentId = isset($_POST['document_id'])
+            ? sanitize_text_field(wp_unslash($_POST['document_id']))
+            : '';
+        self::authorize('commerce_documents_rebuild_' . $documentId);
+        if ($documentId === '' || !function_exists('wc_get_order')) {
+            self::redirect('failed', 'A WooCommerce order is required for rebuild.');
+        }
+
+        global $wpdb;
+        $documents = $wpdb->prefix . 'commerce_documents';
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT document_id, document_type, source_type, source_id, superseded_by
+             FROM {$documents} WHERE document_id = %s LIMIT 1",
+            $documentId
+        ), ARRAY_A);
+        if (!is_array($row) || (string) ($row['source_type'] ?? '') !== 'woocommerce_order') {
+            self::redirect('failed', 'Only WooCommerce order documents can be rebuilt.');
+        }
+
+        $documentType = strtolower(trim((string) ($row['document_type'] ?? '')));
+        if (!in_array($documentType, [
+            DocumentType::ORDER_CONFIRMATION,
+            DocumentType::PAYMENT_CONFIRMATION,
+        ], true)) {
+            self::redirect('failed', 'Only order and payment confirmations can be rebuilt.');
+        }
+        if (trim((string) ($row['superseded_by'] ?? '')) !== '') {
+            self::redirect('generated');
+        }
+
+        $orderId = absint($row['source_id'] ?? 0);
+        $order = $orderId > 0 ? wc_get_order($orderId) : false;
+        if (!$order) {
+            self::redirect('failed', 'The source WooCommerce order was not found.');
+        }
+
+        $type = DocumentType::fromString($documentType);
+        $key = IdempotencyKey::forSource('commerce_documents_rebuild', $documentId, $type);
+        $rebuiltId = 'doc_' . substr($key->value(), 0, 24);
+        $claimed = false;
+
+        try {
+            $claim = $wpdb->query($wpdb->prepare(
+                "UPDATE {$documents} SET superseded_by = %s, superseded_at = %s
+                 WHERE document_id = %s AND superseded_by = ''",
+                $rebuiltId,
+                gmdate('Y-m-d H:i:s'),
+                $documentId
+            ));
+            if ((int) $claim !== 1) {
+                self::redirect('generated');
+            }
+            $claimed = true;
+
+            $snapshot = Plugin::rebuildForOrder($order, $documentId, $documentType);
+            $newData = $snapshot->toArray();
+            if ((string) ($newData['document_id'] ?? '') !== $rebuiltId) {
+                throw new \RuntimeException('Rebuilt document identity did not match its source.');
+            }
+
+            $wpdb->insert($wpdb->prefix . 'commerce_document_links', [
+                'document_id' => $rebuiltId,
+                'parent_document_id' => $documentId,
+                'relationship' => 'rebuild',
+                'created_at' => gmdate('Y-m-d H:i:s'),
+            ], ['%s', '%s', '%s', '%s']);
+
+            $logger = new WpdbEventLogger(
+                $wpdb,
+                $wpdb->prefix . 'commerce_document_events',
+                ConfigKeyProvider::auditKey()
+            );
+            $logger->record('document.replaced', $documentId, [
+                'superseded_by' => $rebuiltId,
+                'reason' => 'rebuild_from_woocommerce_order',
+            ]);
+            $logger->record('document.rebuilt', $rebuiltId, [
+                'parent_document_id' => $documentId,
+                'source_order_id' => (string) $orderId,
+            ]);
+            self::redirect('generated');
+        } catch (Throwable $error) {
+            if ($claimed) {
+                $wpdb->query($wpdb->prepare(
+                    "UPDATE {$documents} SET superseded_by = '', superseded_at = NULL
+                     WHERE document_id = %s AND superseded_by = %s",
+                    $documentId,
+                    $rebuiltId
+                ));
+            }
             self::redirect('failed', $error->getMessage());
         }
     }

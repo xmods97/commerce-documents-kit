@@ -7,9 +7,9 @@ Release and requires these two release assets:
 - commerce-documents-woocommerce.zip
 - commerce-documents-woocommerce.zip.sha256
 
-The ZIP and checksum are produced by tools/build-woocommerce.ps1. The ZIP
-must be attached to a versioned GitHub Release whose tag is a semantic version,
-for example v0.3.1.
+The repository's release workflow publishes the ZIP and checksum automatically
+when a semantic version tag is pushed, for example `v0.3.1`. The tag must match
+both the plugin header version and `Plugin::VERSION`.
 
 ## Server configuration
 
@@ -24,14 +24,18 @@ it in Git, a plugin file, a WordPress option, or the database.
 If the constant is absent, the plugin remains fully functional but does not
 contact GitHub and no update is offered.
 
-## Release checklist
+## Release flow
 
 1. Update the plugin header version and Plugin::VERSION.
-2. Run tools/build-woocommerce.ps1.
-3. Create a GitHub Release with a matching semantic tag.
-4. Attach both generated files from dist/ without renaming them.
-5. In WordPress, open the normal Plugins or Updates page and install the offered
-   Commerce Documents update.
+2. Run the local tests and build as a preflight.
+3. Push a matching tag, for example `git push origin v0.3.1`.
+4. GitHub Actions runs the tests, builds the ZIP/checksum, verifies the package,
+   and publishes the GitHub Release with both assets.
+5. WordPress polls the latest Release and offers the update on the normal
+   Plugins or Updates page.
+
+The branch itself is not an update channel. A release tag and its two assets are
+required before WordPress can offer an update.
 
 Before installation, the updater verifies the ZIP SHA-256 against the
 authenticated GitHub checksum asset. A missing token, wrong asset name, invalid

@@ -20,7 +20,7 @@ use Xmods\CommerceDocuments\Rendering\DesignCatalog;
 
 final class Plugin
 {
-    private const VERSION = '0.3.0';
+    private const VERSION = '0.3.1';
 
     private function __construct()
     {
@@ -153,7 +153,41 @@ final class Plugin
         );
     }
 
-    private static function generateWithPolicy($order, \Xmods\CommerceDocuments\WooCommerce\Contracts\OrderGenerationPolicy $policy): DocumentSnapshot
+    public static function rebuildForOrder(
+        $order,
+        string $originalDocumentId,
+        string $documentType
+    ): DocumentSnapshot {
+        if (trim($originalDocumentId) === '') {
+            throw new \InvalidArgumentException('Original document id is required for rebuild.');
+        }
+
+        switch (strtolower(trim($documentType))) {
+            case DocumentType::ORDER_CONFIRMATION:
+                $policy = new OrderConfirmationPolicy(
+                    ['pending'],
+                    'order-rebuild-confirmation',
+                    1,
+                    true
+                );
+                break;
+            case DocumentType::PAYMENT_CONFIRMATION:
+                $policy = self::paidPolicy();
+                break;
+            default:
+                throw new \InvalidArgumentException(
+                    'Only order and payment confirmations can be rebuilt from a WooCommerce order.'
+                );
+        }
+
+        return self::generateWithPolicy($order, $policy, $originalDocumentId);
+    }
+
+    private static function generateWithPolicy(
+        $order,
+        \Xmods\CommerceDocuments\WooCommerce\Contracts\OrderGenerationPolicy $policy,
+        ?string $rebuildOf = null
+    ): DocumentSnapshot
     {
         global $wpdb;
         $settings = get_option('commerce_documents_wc_settings', []);
@@ -202,6 +236,10 @@ final class Plugin
         );
         $request = (new OrderMapper())->map($adapter->map($order), $policy, gmdate(DATE_ATOM));
         $request->metadata['pdf_design'] = DesignCatalog::normalize((string) ($settings['pdf_design'] ?? DesignCatalog::CLASSIC));
+        if ($rebuildOf !== null) {
+            $request->metadata['rebuild_of'] = $rebuildOf;
+            $request->useIdempotencySource('commerce_documents_rebuild', $rebuildOf);
+        }
 
         $prefix = $wpdb->prefix;
         $service = new GenerateDocument(

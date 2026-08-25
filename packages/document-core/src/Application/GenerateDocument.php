@@ -37,8 +37,12 @@ final class GenerateDocument
         $request->type->assertIssuable();
 
         $key = IdempotencyKey::forSource(
-            $request->sourceType,
-            $request->sourceId,
+            $request->idempotencySourceType !== null
+                ? $request->idempotencySourceType
+                : $request->sourceType,
+            $request->idempotencySourceId !== null
+                ? $request->idempotencySourceId
+                : $request->sourceId,
             $request->type
         );
         $existing = $this->repository->findByIdempotencyKey($key);
