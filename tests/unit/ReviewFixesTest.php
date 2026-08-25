@@ -84,6 +84,21 @@ final class ReviewFixesTest extends TestCase
         self::assertSame('unpaid', $policy->decision($order)['payment_badge']);
     }
 
+    public function testWooCommercePluginResolvesCoreDocumentTypeDuringRebuild(): void
+    {
+        $source = file_get_contents(dirname(__DIR__, 2) . '/packages/woocommerce/src/Plugin.php');
+
+        self::assertIsString($source);
+        self::assertStringContainsString(
+            'use Xmods\\CommerceDocuments\\DocumentType;',
+            $source
+        );
+        self::assertStringNotContainsString(
+            'use Xmods\\CommerceDocuments\\WooCommerce\\DocumentType;',
+            $source
+        );
+    }
+
     // ---- H5: audit chain -----------------------------------------------------
 
     public function testVerifierAcceptsAWellFormedPerDocumentChain(): void

@@ -7,6 +7,7 @@ namespace Xmods\CommerceDocuments\WooCommerce;
 use Throwable;
 use Xmods\CommerceDocuments\Address;
 use Xmods\CommerceDocuments\Application\GenerateDocument;
+use Xmods\CommerceDocuments\DocumentType;
 use Xmods\CommerceDocuments\DocumentSnapshot;
 use Xmods\CommerceDocuments\Language;
 use Xmods\CommerceDocuments\Party;
@@ -20,7 +21,7 @@ use Xmods\CommerceDocuments\Rendering\DesignCatalog;
 
 final class Plugin
 {
-    private const VERSION = '0.3.3';
+    private const VERSION = '0.3.4';
 
     private function __construct()
     {
