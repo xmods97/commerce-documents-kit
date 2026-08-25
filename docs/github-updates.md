@@ -32,7 +32,8 @@ contact GitHub and no update is offered.
 4. GitHub Actions runs the tests, builds the ZIP/checksum, verifies the package,
    and publishes the GitHub Release with both assets.
 5. WordPress polls the latest Release and offers the update on the normal
-   Plugins or Updates page.
+   Plugins or Updates page. The active plugin opts into WordPress automatic
+   updates once a verified release response is available.
 
 The branch itself is not an update channel. A release tag and its two assets are
 required before WordPress can offer an update.

@@ -48,6 +48,7 @@ final class GitHubReleaseUpdater
 
         self::$instance = new self($pluginFile);
         add_filter('pre_set_site_transient_update_plugins', [self::$instance, 'filterUpdates']);
+        add_filter('auto_update_plugin', [self::$instance, 'autoUpdate'], 10, 2);
         add_filter('plugins_api', [self::$instance, 'pluginInformation'], 20, 3);
         add_filter('upgrader_pre_download', [self::$instance, 'preDownload'], 10, 3);
         add_action('load-update-core.php', [self::$instance, 'primeCache']);
@@ -80,6 +81,16 @@ final class GitHubReleaseUpdater
         ];
 
         return $transient;
+    }
+
+    /** @param mixed $update @param mixed $item */
+    public function autoUpdate($update, $item)
+    {
+        if (!is_object($item) || !isset($item->plugin) || (string) $item->plugin !== $this->pluginBasename) {
+            return $update;
+        }
+
+        return true;
     }
 
     /** @param mixed $result @param mixed $action @param mixed $args */

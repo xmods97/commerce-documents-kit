@@ -18,6 +18,7 @@ final class GitHubReleaseUpdaterTest extends TestCase
         self::assertStringContainsString("private const CHECKSUM_ASSET = 'commerce-documents-woocommerce.zip.sha256'", $updater);
         self::assertStringContainsString("apiGetBody((string) \$checksum['url'], 'application/octet-stream')", $updater);
         self::assertStringContainsString('COMMERCE_DOCUMENTS_GITHUB_TOKEN', $updater);
+        self::assertStringContainsString("add_filter('auto_update_plugin', [self::\$instance, 'autoUpdate'], 10, 2)", $updater);
         self::assertStringContainsString("hash_equals(\$release['sha256'], hash('sha256', \$body))", $updater);
         self::assertStringContainsString('GitHubReleaseUpdater::boot(__FILE__)', $entry);
         self::assertStringNotContainsString("update_option('commerce_documents_github_token'", $updater);

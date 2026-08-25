@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Commerce Documents for WooCommerce
  * Description: Issues internal order-confirmation documents for paid WooCommerce orders. Fiscal invoices are not generated automatically.
- * Version: 0.3.2
+ * Version: 0.3.3
  * Update URI: https://github.com/xmods97/commerce-documents-kit
  * Requires at least: 6.0
  * Requires PHP: 7.4

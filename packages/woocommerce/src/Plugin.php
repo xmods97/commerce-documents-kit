@@ -20,7 +20,7 @@ use Xmods\CommerceDocuments\Rendering\DesignCatalog;
 
 final class Plugin
 {
-    private const VERSION = '0.3.2';
+    private const VERSION = '0.3.3';
 
     private function __construct()
     {
