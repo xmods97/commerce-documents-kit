@@ -23,18 +23,19 @@ final class IdempotencyKey
         string $sourceType,
         string $sourceId,
         DocumentType $documentType,
-        string $policy,
-        int $version
+        ?string $legacyPolicy = null,
+        ?int $legacyVersion = null
     ): self {
-        if ($version < 1 || trim($sourceType) === '' || trim($sourceId) === '' || trim($policy) === '') {
-            throw new InvalidArgumentException('Idempotency source, policy, and version are required.');
+        if (trim($sourceType) === '' || trim($sourceId) === '') {
+            throw new InvalidArgumentException('Idempotency source is required.');
         }
+
+        // Policy changes must never allocate another document for the same source.
+        // The optional legacy arguments preserve the v0.2 public call signature.
         return new self(hash('sha256', implode("\n", [
             trim($sourceType),
             trim($sourceId),
             $documentType->value(),
-            trim($policy),
-            (string) $version,
         ])));
     }
 

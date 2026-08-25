@@ -58,6 +58,24 @@ final class GenerateDocumentTest extends TestCase
         self::assertSame('Original Buyer', $original->toArray()['buyer']['name']);
     }
 
+    public function testRebuildCanUseSeparateIdempotencySourceWithoutChangingOrderSource(): void
+    {
+        $repository = new MemoryRepository();
+        $service = new GenerateDocument($repository, new SequentialNumbers(), new MemoryEvents());
+
+        $original = $service->execute($this->request('Original Buyer'));
+        $rebuild = $this->request('Current Buyer');
+        $rebuild->useIdempotencySource('commerce_documents_rebuild', $original->toArray()['document_id']);
+
+        $rebuilt = $service->execute($rebuild);
+
+        self::assertNotSame($original, $rebuilt);
+        self::assertSame('woocommerce_order', $rebuilt->toArray()['source_type']);
+        self::assertSame('42', $rebuilt->toArray()['source_id']);
+        self::assertSame('Current Buyer', $rebuilt->toArray()['buyer']['name']);
+        self::assertSame(2, $repository->saveCount);
+    }
+
     public function testAtomicSavePreventsDuplicateDuringConcurrentRace(): void
     {
         $repository = new RacingRepository();
@@ -74,13 +92,37 @@ final class GenerateDocumentTest extends TestCase
         self::assertCount(1, $events->events);
     }
 
-    private function request(string $buyerName): GenerationRequest
+    public function testLegacyFiscalTypesStayReadableButCannotBeIssued(): void
+    {
+        $repository = new MemoryRepository();
+        $service = new GenerateDocument($repository, new SequentialNumbers(), new MemoryEvents());
+
+        foreach ([DocumentType::INVOICE, DocumentType::PROFORMA, DocumentType::RECEIPT,
+                  DocumentType::CREDIT_NOTE, DocumentType::QUOTE] as $legacy) {
+            $type = DocumentType::fromString($legacy);
+            self::assertFalse($type->isIssuable(), $legacy . ' must not be issuable');
+
+            try {
+                $service->execute($this->request('Buyer', $type));
+                self::fail('Issuing ' . $legacy . ' should have been refused.');
+            } catch (\InvalidArgumentException $exception) {
+                self::assertStringContainsString('cannot be issued', $exception->getMessage());
+            }
+        }
+
+        self::assertSame(0, $repository->saveCount);
+        self::assertTrue(DocumentType::fromString(DocumentType::ORDER_CONFIRMATION)->isIssuable());
+        self::assertTrue(DocumentType::fromString(DocumentType::PAYMENT_CONFIRMATION)->isIssuable());
+        self::assertTrue(DocumentType::fromString(DocumentType::CORRECTION)->isIssuable());
+    }
+
+    private function request(string $buyerName, ?DocumentType $type = null): GenerationRequest
     {
         $currency = Currency::fromCode('EUR');
         $address = Address::create('1 Test Street', '', '00-001', 'Test City', '', 'PL');
 
         return new GenerationRequest(
-            DocumentType::fromString(DocumentType::INVOICE),
+            $type ?? DocumentType::fromString(DocumentType::ORDER_CONFIRMATION),
             DocumentStatus::fromString(DocumentStatus::ISSUED),
             'woocommerce_order',
             '42',

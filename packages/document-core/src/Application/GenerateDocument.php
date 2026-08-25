@@ -31,12 +31,19 @@ final class GenerateDocument
 
     public function execute(GenerationRequest $request): DocumentSnapshot
     {
+        // Second gate behind the order policy: even if a policy or a caller asks
+        // for a legacy fiscal type, no new document of that type is created. The
+        // types stay readable, they are simply no longer issuable.
+        $request->type->assertIssuable();
+
         $key = IdempotencyKey::forSource(
-            $request->sourceType,
-            $request->sourceId,
-            $request->type,
-            $request->policy,
-            $request->version
+            $request->idempotencySourceType !== null
+                ? $request->idempotencySourceType
+                : $request->sourceType,
+            $request->idempotencySourceId !== null
+                ? $request->idempotencySourceId
+                : $request->sourceId,
+            $request->type
         );
         $existing = $this->repository->findByIdempotencyKey($key);
 
@@ -58,7 +65,8 @@ final class GenerateDocument
             $request->items,
             $request->createdAt,
             $request->issuedAt,
-            $request->version
+            $request->version,
+            $request->metadata
         );
 
         $result = $this->repository->save($key, $snapshot);

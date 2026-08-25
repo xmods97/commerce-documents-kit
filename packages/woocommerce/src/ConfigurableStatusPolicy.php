@@ -36,13 +36,18 @@ final class ConfigurableStatusPolicy implements OrderGenerationPolicy
 
     public function documentTypeFor(OrderData $order): ?DocumentType
     {
-        if (in_array($order->status, $this->invoiceStatuses, true)) {
-            return DocumentType::fromString(DocumentType::INVOICE);
+        if ($order->paidAt !== '' && in_array($order->status, $this->invoiceStatuses, true)) {
+            return DocumentType::fromString(DocumentType::ORDER_CONFIRMATION);
         }
-        if (in_array($order->status, $this->proformaStatuses, true)) {
-            return DocumentType::fromString(DocumentType::PROFORMA);
+        if ($this->isCashOnDelivery($order) && in_array($order->status, $this->proformaStatuses, true)) {
+            return DocumentType::fromString(DocumentType::ORDER_CONFIRMATION);
         }
         return null;
+    }
+
+    private function isCashOnDelivery(OrderData $order): bool
+    {
+        return in_array(strtolower($order->paymentMethod), ['cod', 'cash_on_delivery', 'przelewy24_cod'], true);
     }
 
     public function name(): string

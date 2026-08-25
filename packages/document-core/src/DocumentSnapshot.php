@@ -37,7 +37,8 @@ final class DocumentSnapshot
         array $items,
         string $createdAt,
         string $issuedAt,
-        int $version = 1
+        int $version = 1,
+        array $metadata = []
     ): self {
         foreach ([$documentId, $documentNumber, $sourceType, $sourceId] as $required) {
             if (trim($required) === '') {
@@ -63,8 +64,19 @@ final class DocumentSnapshot
 
         $totals = Totals::fromItems($items, $currency);
 
+        $cleanMetadata = [];
+        foreach ($metadata as $key => $value) {
+            if (!is_string($key) || !preg_match('/^[a-z][a-z0-9_]{0,63}$/D', $key)) {
+                throw new InvalidArgumentException('Snapshot metadata key is invalid.');
+            }
+            if (!is_scalar($value) && $value !== null) {
+                throw new InvalidArgumentException('Snapshot metadata values must be scalar.');
+            }
+            $cleanMetadata[$key] = $value;
+        }
+
         return new self([
-            'schema_version' => 1,
+            'schema_version' => 2,
             'document_id' => trim($documentId),
             'document_number' => trim($documentNumber),
             'document_type' => $type->value(),
@@ -74,6 +86,7 @@ final class DocumentSnapshot
             'currency' => $currency->code(),
             'language' => $language->tag(),
             'version' => $version,
+            'metadata' => $cleanMetadata,
             'created_at' => $createdAt,
             'issued_at' => $issuedAt,
             'seller' => $seller->toArray(),
@@ -94,7 +107,7 @@ final class DocumentSnapshot
      */
     public static function fromArray(array $data): self
     {
-        if (($data['schema_version'] ?? null) !== 1) {
+        if (!in_array((int) ($data['schema_version'] ?? 0), [1, 2], true)) {
             throw new InvalidArgumentException('Unsupported snapshot schema version.');
         }
 
@@ -132,7 +145,8 @@ final class DocumentSnapshot
             $items,
             (string) ($data['created_at'] ?? ''),
             (string) ($data['issued_at'] ?? ''),
-            (int) ($data['version'] ?? 0)
+            (int) ($data['version'] ?? 0),
+            (array) ($data['metadata'] ?? [])
         );
     }
 

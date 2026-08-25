@@ -44,6 +44,39 @@ final class RenderingAndDeliveryTest extends TestCase
         self::assertStringContainsString('window.print()', $formatted);
     }
 
+    public function testLegacyPolishOrderConfirmationGetsUnpaidFallback(): void
+    {
+        $snapshot = (new SnapshotFixtureFactory())->create(
+            'pl-PL',
+            'Buyer',
+            DocumentType::ORDER_CONFIRMATION
+        );
+        $html = (new HtmlRenderer(new TemplateCatalog()))->render($snapshot);
+
+        self::assertStringContainsString('NIEOPŁACONE — płatność niepotwierdzona', $html);
+        self::assertStringContainsString('Sprzedawca', $html);
+        self::assertStringContainsString('Nabywca', $html);
+        self::assertStringNotContainsString('Продавец', $html);
+        self::assertStringNotContainsString('Покупатель', $html);
+    }
+
+    public function testPaidPolishDocumentViewKeepsPolishLabelsAndPaymentBadge(): void
+    {
+        $snapshot = (new SnapshotFixtureFactory())->create(
+            'pl-PL',
+            'Buyer',
+            DocumentType::ORDER_CONFIRMATION,
+            ['payment_badge' => 'paid', 'payment_notice' => 'OPŁACONE']
+        );
+        $html = (new HtmlRenderer(new TemplateCatalog()))->render($snapshot);
+
+        self::assertStringContainsString('Sprzedawca', $html);
+        self::assertStringContainsString('Nabywca', $html);
+        self::assertStringContainsString('OPŁACONE', $html);
+        self::assertStringNotContainsString('Продавец', $html);
+        self::assertStringNotContainsString('Покупатель', $html);
+    }
+
     public function testDeliveryRendersSendsAndLogsWithoutStoringRecipient(): void
     {
         $pdf = new TestPdfRenderer();
@@ -99,7 +132,12 @@ final class DeliveryEvents implements EventLogger
 
 final class SnapshotFixtureFactory
 {
-    public function create(string $language, string $buyerName): DocumentSnapshot
+    public function create(
+        string $language,
+        string $buyerName,
+        string $documentType = DocumentType::INVOICE,
+        array $metadata = []
+    ): DocumentSnapshot
     {
         $currency = Currency::fromCode('EUR');
         $address = Address::create('1 Test Street', '', '00-001', 'Test City', '', 'PL');
@@ -107,7 +145,7 @@ final class SnapshotFixtureFactory
         return DocumentSnapshot::create(
             'doc_fixture',
             'TEST/1',
-            DocumentType::fromString(DocumentType::INVOICE),
+            DocumentType::fromString($documentType),
             DocumentStatus::fromString(DocumentStatus::ISSUED),
             'test',
             '1',
@@ -125,7 +163,9 @@ final class SnapshotFixtureFactory
                 ),
             ],
             '2026-07-28T10:00:00+00:00',
-            '2026-07-28T10:00:00+00:00'
+            '2026-07-28T10:00:00+00:00',
+            1,
+            $metadata
         );
     }
 }

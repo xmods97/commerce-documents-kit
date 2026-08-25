@@ -43,4 +43,82 @@ final class PluginIsolationTest extends TestCase
         self::assertStringNotContainsString('wp_mail(', $controller);
         self::assertStringNotContainsString('FiscalizationGateway', $controller);
     }
+
+    /**
+     * The PDF renderer is wired only to the two explicit admin read paths.
+     */
+    public function testThePdfRendererIsWiredOnlyToAdminPreviewAndDownload(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $controller = (string) file_get_contents($root . '/packages/woocommerce/src/AdminController.php');
+        $plugin = (string) file_get_contents($root . '/packages/woocommerce/src/Plugin.php');
+
+        // Exactly one construction, inside the preview factory.
+        self::assertSame(1, substr_count($controller, 'new EmbeddedFontPdfRenderer('));
+        self::assertMatchesRegularExpression(
+            '/private static function pdfRenderer\(\).*?new EmbeddedFontPdfRenderer\(/s',
+            $controller
+        );
+        self::assertStringContainsString('new WordPressLogoProvider()', $controller);
+
+        // Registered on admin_post, unreachable from any order hook.
+        self::assertStringContainsString(
+            "add_action('admin_post_commerce_documents_preview_pdf', [self::class, 'previewPdf'])",
+            $controller
+        );
+        self::assertStringContainsString(
+            "add_action('admin_post_commerce_documents_download_pdf', [self::class, 'downloadPdf'])",
+            $controller
+        );
+        self::assertStringContainsString(
+            "add_action('admin_post_commerce_documents_sandbox_email', [self::class, 'sandboxEmail'])",
+            $controller
+        );
+        self::assertStringNotContainsString('previewPdf', $plugin);
+        self::assertStringNotContainsString('sandboxEmail', $plugin);
+
+        self::assertStringContainsString('CustomerController::boot()', $plugin);
+
+        // Capability, then a nonce bound to the requested document.
+        self::assertStringContainsString("public static function previewPdf(): void", $controller);
+        self::assertStringContainsString("public static function downloadPdf(): void", $controller);
+        self::assertStringContainsString("if (!current_user_can('manage_woocommerce'))", $controller);
+        self::assertStringContainsString("check_admin_referer('commerce_documents_' . \$nonceAction . '_' . \$documentId)", $controller);
+        self::assertStringContainsString("'Content-Disposition: ' . (\$download ? 'attachment' : 'inline')", $controller);
+
+        // A preview, not a delivery: no transport, no queue, no write.
+        self::assertDoesNotMatchRegularExpression(
+            '/\b(wp_mail|fsockopen|curl_\w+|wp_remote_\w+|file_put_contents|wp_schedule_)\w*\s*\(/',
+            $controller
+        );
+    }
+
+    public function testOnlyTheExplicitAdminSandboxActionConstructsLocalDelivery(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $controller = (string) file_get_contents($root . '/packages/woocommerce/src/AdminController.php');
+        $plugin = (string) file_get_contents($root . '/packages/woocommerce/src/Plugin.php');
+        self::assertSame(1, substr_count($controller, 'new SandboxMailer('));
+        self::assertSame(1, substr_count($controller, 'new DeliverDocument('));
+        self::assertStringNotContainsString('new SandboxMailer(', $plugin);
+        self::assertStringNotContainsString('new DeliverDocument(', $plugin);
+        self::assertStringContainsString("'document.sandbox_stored'", $controller);
+        self::assertStringNotContainsString('wp_mail(', $controller);
+    }
+
+    public function testSandboxDeliveryIsLocalAndUsesNoTransport(): void
+    {
+        $controller = (string) file_get_contents(
+            dirname(__DIR__, 2) . '/packages/woocommerce/src/AdminController.php'
+        );
+        self::assertStringContainsString("new SandboxMailer(self::sandboxMailDirectory(), 'sandbox@example.invalid')", $controller);
+        self::assertStringContainsString('purgeExpired(self::sandboxRetentionDays())', $controller);
+        self::assertStringContainsString('COMMERCE_DOCUMENTS_SANDBOX_RETENTION_DAYS', $controller);
+        self::assertStringContainsString("'document.sandbox_stored'", $controller);
+        self::assertStringContainsString('COMMERCE_DOCUMENTS_SANDBOX_MAIL_DIR', $controller);
+        self::assertDoesNotMatchRegularExpression(
+            '/\b(wp_mail|fsockopen|curl_\w+|wp_remote_\w+|wp_schedule_)\w*\s*\(/',
+            $controller
+        );
+    }
 }

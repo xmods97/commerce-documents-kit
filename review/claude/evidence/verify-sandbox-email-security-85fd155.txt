@@ -1,0 +1,79 @@
+﻿PASS: the sandbox nonce is bound to the document id, not to a shared action name
+PASS: the rendered form mints the same per-document nonce
+PASS: authorize() checks the capability before the nonce and dies on failure
+PASS: no anonymous admin_post_nopriv hook exists in runtime code
+PASS: no ajax entry point exists in runtime code
+PASS: no rest route is registered in runtime code
+PASS: no scheduler is wired in runtime code
+PASS: the sandboxEmail body was located for order-sensitive assertions
+PASS: the audit chain is verified before a mailer or delivery service is constructed
+PASS: the action never reads live order data
+PASS: the action reads no request field other than the document id
+PASS: the failure branch does not echo the internal exception message to the browser
+PASS: delivery renders the pdf from the same snapshot object it mails
+PASS: path traversal in the document id is refused
+PASS: windows traversal in the document id is refused
+PASS: header break in the document id is refused
+PASS: quote break out of the filename parameter is refused
+PASS: null byte in the document id is refused
+PASS: space in the document id is refused
+PASS: no file was produced by any refused document id
+PASS: crlf injected subject is refused
+PASS: lone lf injected subject is refused
+PASS: lone cr injected subject is refused
+PASS: empty recipient is refused
+PASS: non-address recipient is refused
+PASS: crlf injected recipient is refused
+PASS: bare header continuation recipient is refused
+PASS: no file was produced by any refused header value
+PASS: a sender address carrying a header break is refused at construction
+PASS: a non-ascii subject is rfc 2047 encoded rather than emitted raw
+PASS: every header line is a single well formed field
+PASS: a discarded staged artifact leaves nothing behind
+PASS: exactly one capture is produced
+PASS: the boundary is unguessable random hex
+PASS: the boundary occurs only where the structure requires it
+PASS: the message is terminated by a closing boundary
+PASS: the message has exactly two parts
+PASS: the pdf attachment decodes byte for byte, including nul, cr, lf and high bytes
+PASS: base64 decoding is strict and produced no false positive
+PASS: the text part decodes back to its original lines with crlf endings
+PASS: every base64 line respects the 76 character limit
+PASS: the attachment filename is quoted and restricted to safe characters
+PASS: the capture declares no active content type
+PASS: the capture carries no markup, script or remote reference
+PASS: the message id and sender are local and unroutable
+PASS: the sandbox event is recorded once, after the capture exists
+PASS: the audit context stores a recipient hash and never the address itself
+PASS: committing onto an existing capture name is refused
+PASS: the pre-existing file is left untouched
+PASS: the pending artifact is removed after a refused commit
+PASS: an artifact path outside the capture directory is refused by commit
+PASS: the foreign file is not consumed
+PASS: committing a non-existent artifact is refused
+PASS: an already committed capture cannot be committed again
+PASS: a renderer failure aborts before anything is written
+PASS: a repeated capture writes a second file instead of overwriting the first
+PASS: the two captures have distinct names
+PASS: both captures are structurally complete
+PASS: the immutable snapshot is byte-identical after two captures
+PASS: each capture appends exactly one audit event
+SKIP: posix permission bits are not meaningful on this platform
+PASS: FINDING F6 pinned: a relative capture directory is accepted, not refused
+PASS: an unusable directory path is refused rather than silently reused
+PASS: a blank capture directory is refused
+PASS: the writeExclusively body was located
+PASS: FINDING F1 pinned: a short fwrite is not detected
+PASS: FINDING F1 pinned: the fclose result is not checked either
+PASS: FINDING F5 pinned: commit guards the target with file_exists before rename
+PASS: FINDING F2 pinned: containment is judged only against ABSPATH
+PASS: FINDING F3 pinned: a pre-existing capture directory is reused without an ownership or mode check
+PASS: FINDING F3 pinned: the default directory is the shared system temp directory
+PASS: FINDING F4 pinned: the only unlink in the mailer is the failure rollback
+PASS: FINDING F4 pinned: no runtime code enumerates or deletes committed captures
+PASS: FINDING F4 pinned: no capture lifetime, cap or expiry setting is defined
+PASS: FINDING F7 pinned: the audit recipient hash is an unsalted sha256
+PASS: FINDING F8 pinned: the capability gate is manage_woocommerce
+PASS: a directory inside ABSPATH is still refused
+PASS: FINDING F2 demonstrated: a directory in the ABSPATH parent is accepted although a subdirectory install serves it
+checks=77 pass=77 fail=0

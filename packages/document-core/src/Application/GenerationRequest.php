@@ -38,6 +38,12 @@ final class GenerationRequest
     public $createdAt;
     /** @var string */
     public $issuedAt;
+    /** @var array<string, scalar|null> */
+    public $metadata;
+    /** @var string|null */
+    public $idempotencySourceType;
+    /** @var string|null */
+    public $idempotencySourceId;
 
     public function __construct(
         DocumentType $type,
@@ -52,7 +58,8 @@ final class GenerationRequest
         Party $buyer,
         array $items,
         string $createdAt,
-        string $issuedAt
+        string $issuedAt,
+        array $metadata = []
     ) {
         $this->type = $type;
         $this->status = $status;
@@ -67,5 +74,17 @@ final class GenerationRequest
         $this->items = $items;
         $this->createdAt = $createdAt;
         $this->issuedAt = $issuedAt;
+        $this->metadata = $metadata;
+        $this->idempotencySourceType = null;
+        $this->idempotencySourceId = null;
+    }
+
+    public function useIdempotencySource(string $sourceType, string $sourceId): void
+    {
+        if (trim($sourceType) === '' || trim($sourceId) === '') {
+            throw new \InvalidArgumentException('Idempotency source is required.');
+        }
+        $this->idempotencySourceType = trim($sourceType);
+        $this->idempotencySourceId = trim($sourceId);
     }
 }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Xmods\CommerceDocuments\WooCommerce;
 
+use Xmods\CommerceDocuments\Rendering\DesignCatalog;
+
 final class AdminSettings
 {
     /**
@@ -24,6 +26,42 @@ final class AdminSettings
             $language = 'pl-PL';
         }
 
+        $codPolicy = (string) ($input['cod_policy'] ?? PaidOrderPolicy::COD_POLICY_NEVER);
+        if (!in_array($codPolicy, [PaidOrderPolicy::COD_POLICY_NEVER, PaidOrderPolicy::COD_POLICY_STATUS_ONLY], true)) {
+            $codPolicy = PaidOrderPolicy::COD_POLICY_NEVER;
+        }
+        $offlineMethods = [];
+        foreach (preg_split('/\s*,\s*/', (string) ($input['cod_offline_methods'] ?? '')) ?: [] as $group) {
+            $group = trim($group);
+            if ($group === '' || preg_match('/^[a-z0-9_\-]+(?:\s+[a-z0-9_\-]+)*$/iD', $group) !== 1) {
+                continue;
+            }
+            foreach (preg_split('/\s+/', $group) ?: [] as $method) {
+                $offlineMethods[] = strtolower($method);
+            }
+        }
+        $offlineMethods = array_values(array_unique(array_filter(
+            $offlineMethods,
+            static function (string $method): bool {
+                return preg_match('/^[a-z0-9_\-]{1,64}$/D', $method) === 1;
+            }
+        )));
+
+        $orderConfirmationStatuses = array_key_exists('order_confirmation_statuses_present', $input)
+            ? $cleanStatuses($input['order_confirmation_statuses'] ?? [])
+            : $cleanStatuses(
+                $input['order_confirmation_statuses']
+                    ?? $input['paid_statuses']
+                    ?? ['pending', 'on-hold', 'processing']
+            );
+        $paymentConfirmationStatuses = array_key_exists('payment_confirmation_statuses_present', $input)
+            ? $cleanStatuses($input['payment_confirmation_statuses'] ?? [])
+            : $cleanStatuses(
+                $input['payment_confirmation_statuses']
+                    ?? $input['paid_statuses']
+                    ?? PaidOrderPolicy::DEFAULT_PAID_STATUSES
+            );
+
         return [
             'seller_source' => ($input['seller_source'] ?? '') === 'woocommerce'
                 ? 'woocommerce'
@@ -42,9 +80,15 @@ final class AdminSettings
                 ],
             ],
             'language' => $language,
-            'proforma_statuses' => $cleanStatuses($input['proforma_statuses'] ?? []),
-            'invoice_statuses' => $cleanStatuses($input['invoice_statuses'] ?? []),
-            'policy_name' => 'woocommerce-status-policy',
+            'pdf_design' => DesignCatalog::normalize((string) ($input['pdf_design'] ?? DesignCatalog::CLASSIC)),
+            // The first confirmation is issued at checkout; the second only
+            // after WooCommerce has confirmed payment. Their status matrices
+            // are intentionally independent.
+            'order_confirmation_statuses' => $orderConfirmationStatuses,
+            'payment_confirmation_statuses' => $paymentConfirmationStatuses,
+            'cod_policy' => $codPolicy,
+            'cod_offline_methods' => $offlineMethods,
+            'policy_name' => 'payment-confirmation',
             'policy_version' => 1,
         ];
     }
@@ -76,7 +120,11 @@ final class AdminSettings
         ];
     }
 
-    public static function isComplete(array $settings): bool
+    public static function isComplete(
+        array $settings,
+        bool $orderConfirmationEnabled = true,
+        bool $paymentConfirmationEnabled = true
+    ): bool
     {
         $seller = (array) ($settings['seller'] ?? []);
         $address = (array) ($seller['address'] ?? []);
@@ -88,9 +136,11 @@ final class AdminSettings
             && in_array((string) ($settings['language'] ?? ''), ['pl-PL', 'en'], true)
             && trim((string) ($settings['policy_name'] ?? '')) !== ''
             && (int) ($settings['policy_version'] ?? 0) >= 1
-            && (
-                (array) ($settings['proforma_statuses'] ?? []) !== []
-                || (array) ($settings['invoice_statuses'] ?? []) !== []
-            );
+            && (!$orderConfirmationEnabled || (array) (
+                $settings['order_confirmation_statuses']
+                    ?? $settings['paid_statuses']
+                ?? []
+            ) !== [])
+            && (!$paymentConfirmationEnabled || (array) ($settings['payment_confirmation_statuses'] ?? []) !== []);
     }
 }

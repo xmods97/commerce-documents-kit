@@ -11,7 +11,7 @@ use Xmods\CommerceDocuments\IdempotencyKey;
 
 final class IdempotencyKeyTest extends TestCase
 {
-    public function testIsDeterministicAndSensitiveToGenerationInputs(): void
+    public function testIsDeterministicAndIgnoresPolicyChanges(): void
     {
         $type = DocumentType::fromString(DocumentType::INVOICE);
         $first = IdempotencyKey::forSource('woocommerce_order', '42', $type, 'default', 1);
@@ -19,7 +19,7 @@ final class IdempotencyKeyTest extends TestCase
         $changed = IdempotencyKey::forSource('woocommerce_order', '42', $type, 'default', 2);
 
         self::assertSame($first->value(), $same->value());
-        self::assertNotSame($first->value(), $changed->value());
+        self::assertSame($first->value(), $changed->value());
         self::assertSame(64, strlen($first->value()));
         self::assertSame($first->value(), IdempotencyKey::fromString($first->value())->value());
     }
