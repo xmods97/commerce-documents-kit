@@ -36,6 +36,15 @@ final class HtmlRenderer
                 . self::escape((string) ($metadata['payment_notice'] ?? ''))
                 . '</strong></p>';
         }
+        if ((string) ($data['document_type'] ?? '') === 'order_confirmation'
+            && !array_key_exists('payment_badge', $metadata)
+            && !array_key_exists('payment_notice', $metadata)
+            && !(
+                strtolower((string) ($metadata['payment_method'] ?? '')) === 'cod'
+                && (string) ($metadata['payment_confirmed'] ?? 'no') === 'yes'
+            )) {
+            $paymentNotice = '<p><strong>NIEOPŁACONE — płatność niepotwierdzona</strong></p>';
+        }
         $rows = '';
         foreach ($data['items'] as $item) {
             $rows .= '<tr><td>' . self::escape($item['description']) . '</td>'

@@ -91,6 +91,17 @@ final class EmbeddedFontPdfRendererTest extends TestCase
         self::assertStringNotContainsString('NIEOPŁACONE', $paid);
     }
 
+    public function testLegacyOrderConfirmationGetsUnpaidFallbackInPolish(): void
+    {
+        $text = (new PdfReader((new EmbeddedFontPdfRenderer())->render($this->snapshot())))->text();
+
+        self::assertStringContainsString('NIEOPŁACONE — płatność niepotwierdzona', $text);
+        self::assertStringContainsString('Sprzedawca', $text);
+        self::assertStringContainsString('Nabywca', $text);
+        self::assertStringNotContainsString('Продавец', $text);
+        self::assertStringNotContainsString('Покупатель', $text);
+    }
+
     public function testCorrectionReferencesAppearOnTheDocument(): void
     {
         $text = (new PdfReader((new EmbeddedFontPdfRenderer())->render($this->snapshot([

@@ -361,7 +361,7 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
         $page->box(410.0, PageBuilder::BOTTOM, 185.0, 694.0, 0.82);
         $x = 430.0;
         $page->text($x, 742.0, strtoupper($labels['status'] ?? 'STATUS'), 8.0, true);
-        $badge = self::paymentBadge($metadata);
+        $badge = self::paymentBadge($metadata, (string) ($data['document_type'] ?? ''));
         $badgeLines = $page->wrap($badge === '' ? '—' : $badge, 145.0, 9.0, true, 3);
         $y = 726.0;
         foreach ($badgeLines as $line) { $page->text($x, $y, $line, 9.0, true); $y -= 11.0; }
@@ -429,13 +429,19 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
             );
         }
 
-        if (self::paymentBadge($metadata) !== '') {
+        if (self::paymentBadge($metadata, (string) ($data['document_type'] ?? '')) !== '') {
             // Boxed rather than inline: whether the money has arrived is the single
             // fact an operator reads off this document first.
             $page->advance(4.0);
             $top = $page->y();
             $page->box(PageBuilder::MARGIN, $top - 18.0, PageBuilder::RIGHT - PageBuilder::MARGIN, 20.0);
-            $page->text(PageBuilder::MARGIN + 8.0, $top - 12.0, self::paymentBadge($metadata), 10.0, true);
+            $page->text(
+                PageBuilder::MARGIN + 8.0,
+                $top - 12.0,
+                self::paymentBadge($metadata, (string) ($data['document_type'] ?? '')),
+                10.0,
+                true
+            );
             $page->moveTo($top - 24.0);
         }
 
@@ -927,13 +933,30 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
     }
 
     /** @param array<string, mixed> $metadata */
-    private static function paymentBadge(array $metadata): string
+    private static function paymentBadge(array $metadata, string $documentType = ''): string
     {
         $notice = trim((string) ($metadata['payment_notice'] ?? ''));
         if ($notice !== '' && in_array((string) ($metadata['payment_badge'] ?? ''), ['unpaid', 'paid'], true)) {
             return $notice;
         }
-        return self::isUnpaidOnDelivery($metadata) ? 'NIEOPŁACONE — płatność przy odbiorze' : '';
+        if (self::isUnpaidOnDelivery($metadata)) {
+            return 'NIEOPŁACONE — płatność przy odbiorze';
+        }
+        return self::isLegacyOrderConfirmation($metadata, $documentType)
+            ? 'NIEOPŁACONE — płatność niepotwierdzona'
+            : '';
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private static function isLegacyOrderConfirmation(array $metadata, string $documentType): bool
+    {
+        return $documentType === 'order_confirmation'
+            && !array_key_exists('payment_badge', $metadata)
+            && !array_key_exists('payment_notice', $metadata)
+            && !(
+                strtolower((string) ($metadata['payment_method'] ?? '')) === 'cod'
+                && (string) ($metadata['payment_confirmed'] ?? 'no') === 'yes'
+            );
     }
 
     private function money(int $minorUnits): string

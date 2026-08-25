@@ -61,8 +61,14 @@ final class BasicPdfRenderer implements PdfRenderer
             $y -= 13;
         }
 
-        if (self::isUnpaid($metadata)) {
-            $ops[] = self::text(self::MARGIN, $y, 'NIEOPŁACONE — płatność przy odbiorze', 10, true);
+        if (self::isUnpaid($metadata, (string) ($data['document_type'] ?? ''))) {
+            $ops[] = self::text(
+                self::MARGIN,
+                $y,
+                self::paymentNotice($metadata, (string) ($data['document_type'] ?? '')),
+                10,
+                true
+            );
             $y -= 16;
         }
         if ((string) ($metadata['payment_badge'] ?? '') === 'paid') {
@@ -140,12 +146,34 @@ final class BasicPdfRenderer implements PdfRenderer
     }
 
     /** @param array<string, mixed> $metadata */
-    private static function isUnpaid(array $metadata): bool
+    private static function isUnpaid(array $metadata, string $documentType = ''): bool
     {
         return (string) ($metadata['payment_badge'] ?? '') === 'unpaid'
             || (string) ($metadata['payment_status'] ?? '') === 'cash_on_delivery_unpaid'
             || (strtolower((string) ($metadata['payment_method'] ?? '')) === 'cod'
-                && (string) ($metadata['payment_confirmed'] ?? 'no') !== 'yes');
+                && (string) ($metadata['payment_confirmed'] ?? 'no') !== 'yes')
+            || ($documentType === 'order_confirmation'
+                && !array_key_exists('payment_badge', $metadata)
+                && !array_key_exists('payment_notice', $metadata)
+                && !(
+                    strtolower((string) ($metadata['payment_method'] ?? '')) === 'cod'
+                    && (string) ($metadata['payment_confirmed'] ?? 'no') === 'yes'
+                ));
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private static function paymentNotice(array $metadata, string $documentType = ''): string
+    {
+        if ($documentType === 'order_confirmation'
+            && !array_key_exists('payment_badge', $metadata)
+            && !array_key_exists('payment_notice', $metadata)
+            && !(
+                strtolower((string) ($metadata['payment_method'] ?? '')) === 'cod'
+                && (string) ($metadata['payment_confirmed'] ?? 'no') === 'yes'
+            )) {
+            return 'NIEOPŁACONE — płatność niepotwierdzona';
+        }
+        return 'NIEOPŁACONE — płatność przy odbiorze';
     }
 
     /**
