@@ -21,7 +21,7 @@ use Xmods\CommerceDocuments\Rendering\DesignCatalog;
 
 final class Plugin
 {
-    private const VERSION = '0.3.4';
+    private const VERSION = '0.3.5';
 
     private function __construct()
     {
@@ -33,6 +33,7 @@ final class Plugin
         add_action('woocommerce_checkout_order_processed', [self::class, 'observeCheckoutOrder'], 20, 3);
         add_action('woocommerce_order_status_changed', [self::class, 'observeOrderStatus'], 10, 4);
         CustomerController::boot();
+        EmailAttachments::boot();
         if (is_admin()) {
             AdminController::boot();
         }
