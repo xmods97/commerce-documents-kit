@@ -73,7 +73,7 @@ final class DocumentSnapshotTest extends TestCase
     public function testRejectsUnsupportedSchema(): void
     {
         $data = $this->snapshot()->toArray();
-        $data['schema_version'] = 2;
+        $data['schema_version'] = 3;
 
         $this->expectException(InvalidArgumentException::class);
         DocumentSnapshot::fromArray($data);

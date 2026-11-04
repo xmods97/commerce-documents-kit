@@ -25,16 +25,16 @@ final class WooCommerceOrderMapperTest extends TestCase
         $policy = new ConfigurableStatusPolicy(['pending'], ['processing', 'completed'], 'test', 1);
         $mapper = new OrderMapper();
 
-        $proforma = $mapper->map($this->order('pending', ''), $policy, '2026-07-28T12:00:00+00:00');
+        $proforma = $mapper->map($this->order('pending', '', 'cod'), $policy, '2026-07-28T12:00:00+00:00');
         $invoice = $mapper->map(
             $this->order('processing', '2026-07-28T11:00:00+00:00'),
             $policy,
             '2026-07-28T12:00:00+00:00'
         );
 
-        self::assertSame('proforma', $proforma->type->value());
+        self::assertSame('order_confirmation', $proforma->type->value());
         self::assertSame('2026-07-28T12:00:00+00:00', $proforma->issuedAt);
-        self::assertSame('invoice', $invoice->type->value());
+        self::assertSame('order_confirmation', $invoice->type->value());
         self::assertSame('2026-07-28T11:00:00+00:00', $invoice->issuedAt);
         self::assertSame('42', $invoice->sourceId);
     }
@@ -49,7 +49,7 @@ final class WooCommerceOrderMapperTest extends TestCase
         );
     }
 
-    private function order(string $status, string $paidAt): OrderData
+    private function order(string $status, string $paidAt, string $paymentMethod = ''): OrderData
     {
         $currency = Currency::fromCode('EUR');
         $address = Address::create('1 Test Street', '', '00-001', 'Test City', '', 'PL');
@@ -70,7 +70,8 @@ final class WooCommerceOrderMapperTest extends TestCase
                     Money::fromMinorUnits(1000, $currency),
                     TaxRate::zero()
                 ),
-            ]
+            ],
+            $paymentMethod
         );
     }
 }

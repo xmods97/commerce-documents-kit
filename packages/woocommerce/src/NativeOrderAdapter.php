@@ -71,7 +71,7 @@ final class NativeOrderAdapter
                     Quantity::one(),
                     'service',
                     $shippingNet,
-                    $this->effectiveRate($shippingNet, $shippingTax),
+                    $this->taxRateForShipping($order, $shippingNet, $shippingTax),
                     $shippingNet,
                     $shippingTax
                 );
@@ -87,7 +87,8 @@ final class NativeOrderAdapter
             $language,
             $this->seller,
             $this->buyer($order),
-            $items
+            $items,
+            method_exists($order, 'get_payment_method') ? (string) $order->get_payment_method() : ''
         );
     }
 
@@ -115,7 +116,7 @@ final class NativeOrderAdapter
             $quantity,
             $unit !== '' ? $unit : 'unit',
             $unitNet,
-            $this->effectiveRate($lineNet, $lineTax),
+            $this->taxRateForItem($item, $lineNet, $lineTax),
             $lineNet,
             $lineTax
         );
@@ -190,6 +191,84 @@ final class NativeOrderAdapter
         }
         $ppm = intdiv($taxUnits * 1000000 + intdiv($netUnits, 2), $netUnits);
         return TaxRate::fromPartsPerMillion($ppm);
+    }
+
+    /**
+     * WooCommerce stores the authoritative tax rate separately from the line
+     * totals. Prefer that rate: line tax is rounded to currency precision, so
+     * deriving a percentage from line_tax / line_total turns a real 23% rate
+     * into values such as 22.98% for small lines.
+     */
+    private function taxRateForItem($item, Money $net, Money $tax): TaxRate
+    {
+        if (!method_exists($item, 'get_taxes')) {
+            // Framework-free legacy objects did not expose the authoritative
+            // WooCommerce tax ID. Preserve their bounded compatibility path.
+            return $this->effectiveRate($net, $tax);
+        }
+
+        $taxes = (array) $item->get_taxes();
+        return $this->taxRateForTotals((array) ($taxes['total'] ?? []), $net, $tax, 'line item');
+    }
+
+    private function taxRateForShipping($order, Money $net, Money $tax): TaxRate
+    {
+        if (!method_exists($order, 'get_shipping_taxes')) {
+            return $this->effectiveRate($net, $tax);
+        }
+
+        return $this->taxRateForTotals((array) $order->get_shipping_taxes(), $net, $tax, 'shipping');
+    }
+
+    /**
+     * A document item supports one tax rate. A declared WooCommerce rate must
+     * therefore resolve exactly once; never invent a blended percentage from
+     * rounded totals or multiple rates (for example 23% + 8% => false 31%).
+     *
+     * @param array<int|string, mixed> $totals
+     */
+    private function taxRateForTotals(array $totals, Money $net, Money $tax, string $context): TaxRate
+    {
+        $rateIds = array_keys($totals);
+        if ($rateIds === []) {
+            if ($tax->minorUnits() === 0) {
+                return TaxRate::zero();
+            }
+            throw new RuntimeException('WooCommerce ' . $context . ' has tax but no tax rate identifier.');
+        }
+        if (count($rateIds) !== 1) {
+            throw new RuntimeException(
+                'WooCommerce ' . $context . ' has multiple tax rates and cannot be represented safely.'
+            );
+        }
+        if (!class_exists('WC_Tax') || !method_exists('WC_Tax', 'get_rate_percent')) {
+            throw new RuntimeException('WooCommerce tax rate lookup is unavailable.');
+        }
+
+        $rate = self::taxRateFromDecimal(
+            (string) \WC_Tax::get_rate_percent((int) $rateIds[0])
+        );
+        if (!$rate instanceof TaxRate) {
+            throw new RuntimeException('WooCommerce tax rate identifier could not be resolved.');
+        }
+        return $rate;
+    }
+
+    private static function taxRateFromDecimal(string $value): ?TaxRate
+    {
+        $value = trim(str_replace(',', '.', rtrim($value, "% \t\n\r\0\x0B")));
+        if (preg_match('/^\d{1,3}(?:\.\d{1,6})?$/D', $value) !== 1) {
+            return null;
+        }
+        $parts = explode('.', $value, 2);
+        $whole = (int) $parts[0];
+        // WooCommerce expresses the rate as a percentage (23.0000), while
+        // the document model stores the equivalent ratio in parts per million
+        // (230000). Keep the conversion integer-based and deterministic.
+        $fraction = str_pad((string) ($parts[1] ?? ''), 6, '0');
+        $percentScaled = $whole * 1000000 + (int) substr($fraction, 0, 6);
+        $ppm = intdiv($percentScaled + 50, 100);
+        return $ppm <= 1000000 ? TaxRate::fromPartsPerMillion($ppm) : null;
     }
 
     private function date($date, bool $optional = false): string

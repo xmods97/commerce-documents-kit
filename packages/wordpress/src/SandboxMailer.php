@@ -1,0 +1,278 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Xmods\CommerceDocuments\WordPress;
+
+use InvalidArgumentException;
+use RuntimeException;
+use Throwable;
+use Xmods\CommerceDocuments\DocumentSnapshot;
+use Xmods\CommerceDocuments\Contracts\StagedMailer;
+
+/**
+ * Writes RFC 2045 .eml files to a local directory.
+ *
+ * It never calls wp_mail, never opens a socket and has no transport. This is the
+ * only Mailer wired anywhere, so no message can leave the machine.
+ */
+final class SandboxMailer implements StagedMailer
+{
+    /** @var string */
+    private $directory;
+    /** @var string */
+    private $from;
+
+    public function __construct(string $directory, string $from = 'sandbox@example.invalid')
+    {
+        if (self::hasHeaderBreak($from) || filter_var(self::addressOf($from), FILTER_VALIDATE_EMAIL) === false) {
+            throw new InvalidArgumentException('Sandbox sender address is invalid.');
+        }
+        $directory = rtrim($directory, "\\/");
+        if ($directory === '' || (!is_dir($directory) && !@mkdir($directory, 0700, true))) {
+            throw new RuntimeException('Sandbox mail directory is unavailable.');
+        }
+        if (!is_dir($directory) || !is_writable($directory)) {
+            throw new RuntimeException('Sandbox mail directory is not writable.');
+        }
+
+        // Resolve before anything is stored: the directory arrives from a
+        // wp-config constant, so `..` in it would otherwise decide where files
+        // land at write time rather than here.
+        $resolved = realpath($directory);
+        if ($resolved === false) {
+            throw new RuntimeException('Sandbox mail directory does not resolve.');
+        }
+        self::assertOutsideWebRoot($resolved);
+
+        $this->directory = $resolved;
+        $this->from = $from;
+    }
+
+    /**
+     * A capture holds the buyer's name, their email address and the whole
+     * rendered document. Inside the web root that is a personal-data disclosure
+     * waiting for a directory listing, a misconfigured handler or a backup
+     * crawler, so it is refused outright rather than mitigated with a deny file
+     * that only some servers honour.
+     */
+    private static function assertOutsideWebRoot(string $directory): void
+    {
+        if (!defined('ABSPATH')) {
+            // No WordPress request context — CLI, tests. Nothing is being served.
+            return;
+        }
+        $root = realpath((string) constant('ABSPATH'));
+        if ($root === false) {
+            return;
+        }
+
+        $normalisedRoot = rtrim(str_replace('\\', '/', $root), '/');
+        $normalisedDirectory = rtrim(str_replace('\\', '/', $directory), '/');
+        if ($normalisedDirectory === $normalisedRoot
+            || strpos($normalisedDirectory . '/', $normalisedRoot . '/') === 0
+        ) {
+            throw new RuntimeException(
+                'Sandbox mail directory must sit outside the web root; '
+                . 'captures contain the buyer address and the rendered document.'
+            );
+        }
+    }
+
+    public function send(
+        DocumentSnapshot $snapshot,
+        string $recipient,
+        string $subject,
+        string $message,
+        string $pdfBinary
+    ): void {
+        $artifact = null;
+        try {
+            $artifact = $this->stage($snapshot, $recipient, $subject, $message, $pdfBinary);
+            $this->commit($artifact);
+        } catch (Throwable $error) {
+            if ($artifact !== null) {
+                $this->discard($artifact);
+            }
+            throw $error;
+        }
+    }
+
+    public function stage(
+        DocumentSnapshot $snapshot,
+        string $recipient,
+        string $subject,
+        string $message,
+        string $pdfBinary
+    ): string {
+        // Header fields must not contain a line break. The body may — folding a
+        // multi-line body into a single line was rejecting legitimate messages.
+        if (filter_var($recipient, FILTER_VALIDATE_EMAIL) === false || self::hasHeaderBreak($subject)) {
+            throw new InvalidArgumentException('Sandbox email headers or recipient are invalid.');
+        }
+        $id = (string) ($snapshot->toArray()['document_id'] ?? 'document');
+        if (!preg_match('/^[A-Za-z0-9_-]+$/D', $id)) {
+            throw new InvalidArgumentException('Document identifier is invalid.');
+        }
+
+        $boundary = 'cdk-' . bin2hex(random_bytes(12));
+        $eml = 'MIME-Version: 1.0' . "\r\n"
+            . 'Date: ' . gmdate('D, d M Y H:i:s') . " +0000\r\n"
+            . 'Message-ID: <' . bin2hex(random_bytes(12)) . '@commerce-documents.local>' . "\r\n"
+            . 'From: ' . $this->from . "\r\n"
+            . 'To: ' . $recipient . "\r\n"
+            . 'Subject: ' . self::encodeHeader($subject) . "\r\n"
+            . 'Content-Type: multipart/mixed; boundary="' . $boundary . "\"\r\n\r\n"
+            . 'This is a multi-part message in MIME format.' . "\r\n\r\n"
+            . '--' . $boundary . "\r\n"
+            . "Content-Type: text/plain; charset=UTF-8\r\n"
+            . "Content-Transfer-Encoding: base64\r\n\r\n"
+            . chunk_split(base64_encode(self::normalizeBody($message)))
+            . '--' . $boundary . "\r\n"
+            . "Content-Type: application/pdf\r\n"
+            . "Content-Transfer-Encoding: base64\r\n"
+            . 'Content-Disposition: attachment; filename="' . $id . '.pdf"' . "\r\n\r\n"
+            . chunk_split(base64_encode($pdfBinary))
+            . '--' . $boundary . "--\r\n";
+
+        return $this->writeExclusively($id, $eml, 'pending');
+    }
+
+    public function commit(string $artifact): string
+    {
+        $source = $this->ownedPath($artifact);
+        $base = pathinfo($source, PATHINFO_FILENAME);
+        if (strtolower((string) pathinfo($source, PATHINFO_EXTENSION)) !== 'pending') {
+            throw new RuntimeException('Sandbox artifact is not pending.');
+        }
+        $target = $this->directory . DIRECTORY_SEPARATOR . $base . '.eml';
+        if (file_exists($target) || !@rename($source, $target)) {
+            throw new RuntimeException('Sandbox email could not be committed.');
+        }
+        return $target;
+    }
+
+    /**
+     * Remove only expired captures created by this mailer.
+     *
+     * The durable document snapshot and its audit events are unrelated to this
+     * test artifact and are never touched. The filename allow-list prevents an
+     * operator's other files from being treated as sandbox mail.
+     */
+    public function purgeExpired(int $retentionDays): int
+    {
+        if ($retentionDays < 1 || $retentionDays > 3650) {
+            throw new InvalidArgumentException('Sandbox retention must be between 1 and 3650 days.');
+        }
+
+        $cutoff = time() - ($retentionDays * 86400);
+        $deleted = 0;
+        try {
+            $iterator = new \DirectoryIterator($this->directory);
+            foreach ($iterator as $entry) {
+                if ($entry->isDot() || $entry->isLink() || !$entry->isFile()) {
+                    continue;
+                }
+                $name = $entry->getFilename();
+                if (preg_match('/^[A-Za-z0-9_-]+-\d{8}T\d{6}-[a-f0-9]{12}\.eml$/D', $name) !== 1) {
+                    continue;
+                }
+                $modified = $entry->getMTime();
+                if ($modified >= $cutoff) {
+                    continue;
+                }
+                if (!@unlink($entry->getPathname())) {
+                    throw new RuntimeException('Expired sandbox email could not be removed.');
+                }
+                $deleted++;
+            }
+        } catch (Throwable $error) {
+            if ($error instanceof InvalidArgumentException || $error instanceof RuntimeException) {
+                throw $error;
+            }
+            throw new RuntimeException('Sandbox retention cleanup failed.', 0, $error);
+        }
+
+        return $deleted;
+    }
+
+    public function discard(string $artifact): void
+    {
+        $path = $this->ownedPath($artifact, false);
+        if ($path !== null) {
+            @unlink($path);
+        }
+    }
+
+    /**
+     * Creates the file with O_EXCL so an existing file is never overwritten and a
+     * pre-created symlink cannot capture the write. The random suffix means two
+     * sends in the same second produce two files rather than one.
+     */
+    private function writeExclusively(string $id, string $contents, string $extension): string
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $path = $this->directory . DIRECTORY_SEPARATOR
+                . $id . '-' . gmdate('Ymd\THis') . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
+            $handle = @fopen($path, 'xb');
+            if ($handle === false) {
+                continue;
+            }
+            // Restrict before writing: the file carries the recipient address, the
+            // buyer's name and the rendered document.
+            @chmod($path, 0600);
+            $written = fwrite($handle, $contents);
+            fclose($handle);
+            if ($written === false) {
+                throw new RuntimeException('Sandbox email could not be written.');
+            }
+            return $path;
+        }
+
+        throw new RuntimeException('Sandbox email could not be written.');
+    }
+
+    private function ownedPath(string $path, bool $required = true): ?string
+    {
+        $resolved = realpath($path);
+        if ($resolved === false || !is_file($resolved)) {
+            if ($required) {
+                throw new RuntimeException('Sandbox artifact does not exist.');
+            }
+            return null;
+        }
+        $directory = realpath($this->directory);
+        $normalisedPath = str_replace('\\', '/', $resolved);
+        $normalisedDirectory = rtrim(str_replace('\\', '/', (string) $directory), '/');
+        if ($directory === false || strpos($normalisedPath, $normalisedDirectory . '/') !== 0) {
+            throw new RuntimeException('Sandbox artifact is outside its capture directory.');
+        }
+        return $resolved;
+    }
+
+    private static function normalizeBody(string $body): string
+    {
+        return (string) preg_replace('/\r\n|\r|\n/', "\r\n", $body);
+    }
+
+    private static function encodeHeader(string $value): string
+    {
+        if (preg_match('/^[\x20-\x7E]*$/D', $value) === 1) {
+            return $value;
+        }
+        return '=?UTF-8?B?' . base64_encode($value) . '?=';
+    }
+
+    private static function hasHeaderBreak(string $value): bool
+    {
+        return preg_match('/[\r\n]/', $value) === 1;
+    }
+
+    private static function addressOf(string $from): string
+    {
+        if (preg_match('/<([^>]+)>\s*$/D', $from, $match) === 1) {
+            return $match[1];
+        }
+        return trim($from);
+    }
+}

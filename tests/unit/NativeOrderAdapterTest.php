@@ -39,18 +39,22 @@ final class NativeOrderAdapterTest extends TestCase
         self::assertSame('2026-07-28T11:00:00+00:00', $mapped->paidAt);
     }
 
-    public function testPluginRequiresExplicitShadowEnableAndConfiguredStatuses(): void
+    public function testPluginUsesSeparateCheckoutAndPaymentConfirmationPolicies(): void
     {
         $source = file_get_contents(
             dirname(__DIR__, 2) . '/packages/woocommerce/src/Plugin.php'
         );
 
         self::assertStringContainsString(
-            "get_option('commerce_documents_wc_shadow_enabled', false) !== true",
+            "add_action('woocommerce_checkout_order_processed', [self::class, 'observeCheckoutOrder']",
             $source
         );
-        self::assertStringContainsString("'proforma_statuses'", $source);
-        self::assertStringContainsString("'invoice_statuses'", $source);
+        self::assertStringContainsString("'commerce_documents_wc_order_confirmation_enabled'", $source);
+        self::assertStringContainsString("'commerce_documents_wc_payment_confirmation_enabled'", $source);
+        self::assertStringContainsString('generateOrderConfirmationForOrder', $source);
+        self::assertStringContainsString('generatePaymentConfirmationForOrder', $source);
+        self::assertStringNotContainsString("'proforma_statuses'", $source);
+        self::assertStringNotContainsString("'invoice_statuses'", $source);
         self::assertStringNotContainsString('wp_mail(', $source);
         self::assertStringNotContainsString('KSeF', $source);
     }

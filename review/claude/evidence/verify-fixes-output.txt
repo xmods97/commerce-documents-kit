@@ -1,0 +1,78 @@
+﻿
+=== C1 — encrypted snapshot survives wpdb column formats ===
+  PASS  snapshot_cipher is not collapsed to 0 — length=1613
+  PASS  encryption_version is an integer 1
+  PASS  round-trips back to the same document
+
+=== H1 — legacy plaintext fallback is authenticated ===
+  PASS  valid legacy row is accepted
+  PASS  tampered body rejected — Legacy document snapshot failed integrity verification.
+  PASS  missing content_hash rejected — Legacy document snapshot has no usable content hash.
+  PASS  garbage content_hash rejected — Legacy document snapshot failed integrity verification.
+  PASS  removal boundary is declared — removed in schema 5, current 4
+
+=== H2/H3 — order confirmation only, and only when paid ===
+  PASS  no document for pending/bacs (unpaid)
+  PASS  no document for cancelled/bacs (unpaid)
+  PASS  no document for failed/bacs (unpaid)
+  PASS  no document for refunded/stripe (unpaid)
+  PASS  no document for checkout-draft/stripe (unpaid)
+  PASS  no document for processing/cod (unpaid)
+  PASS  paid order yields order_confirmation — order_confirmation
+  PASS  invoice/proforma are never produced
+  PASS  COD counts only once explicitly enrolled
+  PASS  COD still excluded on an unpaid status
+  PASS  decision is recorded for audit
+  PASS  runtime no longer constructs ConfigurableStatusPolicy
+
+=== H5 — audit chain ===
+  PASS  intact chain verifies
+  PASS  altered event detected — event contents do not match the recorded hash
+  PASS  deleted event detected — chain link does not match the previous event
+  PASS  chain_position unique index present
+  PASS  chain tip is read per document
+  PASS  contention is retried
+
+=== H6 / M9 — supersession and migration safety ===
+  PASS  superseded_by column present
+  PASS  superseded_at column present
+  PASS  correction requires an idempotency token
+  PASS  supersession is claimed conditionally
+  PASS  event recorded on the original
+  PASS  event recorded on the correction
+  PASS  rollback plan is emitted, not executed
+  PASS  rollback plan validates the prefix
+
+=== H4 — PDF content ===
+  PASS  valid PDF header and trailer — 2687 bytes
+  PASS  custom encoding declared
+  PASS  Polish text is not replaced by "?"
+  PASS  all line items rendered
+  PASS  totals rendered
+  PASS  unpaid COD notice rendered
+  PASS  every xref offset resolves — 7 objects
+  PASS  startxref points at the table
+  PASS  long multibyte name truncated safely
+  PASS  renderer needs no ext-mbstring
+  PASS  delimiters escaped — \(x\) \\ y
+  PASS  control bytes neutralised
+
+=== M4-M7 — sandbox mailer ===
+  PASS  two sends in the same second leave two files — 2 file(s)
+  PASS  MIME-Version present
+  PASS  From present
+  PASS  Message-ID present
+  PASS  non-ASCII subject encoded
+  PASS  multi-line body accepted
+  PASS  restrictive mode requested (POSIX-only; not observable on Windows) — reported mode=0666 on Windows
+  PASS  header injection and bad recipients rejected — 3/3
+  PASS  no network transport is invoked
+  PASS  exclusive create used
+
+=== M8 — HPOS declaration ===
+  PASS  declares custom_order_tables compatibility
+  PASS  uses before_woocommerce_init
+  PASS  plugin description no longer advertises invoices
+
+------------------------------------------------------------
+PASS 59   FAIL 0

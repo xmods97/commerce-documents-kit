@@ -1,0 +1,76 @@
+name: Release WooCommerce plugin
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          coverage: none
+
+      - name: Install development dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run unit tests
+        run: composer test
+
+      - name: Check PHP syntax
+        shell: bash
+        run: find packages plugins tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Verify tag matches plugin version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $tagVersion = $env:RELEASE_TAG -replace '^v', ''
+          $header = Get-Content './plugins/commerce-documents-woocommerce/commerce-documents-woocommerce.php' -Raw
+          if ($header -notmatch '(?im)^\s*\*\s*Version:\s*([^\r\n]+)') {
+            throw 'Plugin version header was not found.'
+          }
+          if ($Matches[1].Trim() -ne $tagVersion) {
+            throw "Release tag $env:RELEASE_TAG does not match plugin version $($Matches[1].Trim())."
+          }
+
+      - name: Build release artifact
+        shell: pwsh
+        run: ./tools/build-woocommerce.ps1
+
+      - name: Verify release artifact
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path './dist/commerce-documents-woocommerce.zip'))
+          try {
+            $files = $archive.Entries | ForEach-Object { $_.FullName }
+            if ($files -match '(^|/)(tests|docs|\.git)(/|$)') { throw 'Development files found in ZIP.' }
+            if ($files -match 'ldc-invoice-generator') { throw 'Legacy runtime found in ZIP.' }
+          } finally {
+            $archive.Dispose()
+          }
+          Expand-Archive './dist/commerce-documents-woocommerce.zip' './dist/installed'
+          php ./tools/verify-plugin-bootstrap.php './dist/installed/commerce-documents-woocommerce/commerce-documents-woocommerce.php'
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Commerce Documents $RELEASE_TAG" \
+            --generate-notes \
+            dist/commerce-documents-woocommerce.zip \
+            dist/commerce-documents-woocommerce.zip.sha256

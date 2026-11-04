@@ -1,0 +1,19 @@
+﻿PASS: admin action is registered
+PASS: plugin does not register sandbox delivery
+PASS: capability precedes nonce authorization
+PASS: delivery uses a sandbox event
+PASS: no transport call exists in controller
+PASS: one local eml is created
+PASS: the pdf attachment decodes to exactly the rendered document
+PASS: the attachment is declared as a filename-safe attachment
+PASS: the multiline body decodes back to both of its lines
+PASS: the recipient and sender headers are the expected local ones
+PASS: sandbox event is recorded
+PASS: the audit event carries a recipient hash, not the address
+PASS: no transport symbols occur in mailer source
+PASS: the recipient is read from the snapshot, not from the request
+PASS: an invalid buyer address stops the capture before anything is rendered
+PASS: a capture directory inside the web root is refused
+PASS: a traversal path that resolves back inside the web root is refused
+PASS: a directory outside the web root is still accepted
+checks=18 pass=18 fail=0

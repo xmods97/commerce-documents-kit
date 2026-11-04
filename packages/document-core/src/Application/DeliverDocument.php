@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Xmods\CommerceDocuments\Contracts\EventLogger;
 use Xmods\CommerceDocuments\Contracts\Mailer;
 use Xmods\CommerceDocuments\Contracts\PdfRenderer;
+use Xmods\CommerceDocuments\Contracts\StagedMailer;
 use Xmods\CommerceDocuments\DocumentSnapshot;
 
 final class DeliverDocument
@@ -18,12 +19,23 @@ final class DeliverDocument
     private $mailer;
     /** @var EventLogger */
     private $events;
+    /** @var string */
+    private $eventName;
 
-    public function __construct(PdfRenderer $pdf, Mailer $mailer, EventLogger $events)
+    public function __construct(
+        PdfRenderer $pdf,
+        Mailer $mailer,
+        EventLogger $events,
+        string $eventName = 'document.sent'
+    )
     {
+        if (trim($eventName) === '') {
+            throw new InvalidArgumentException('Delivery event name is required.');
+        }
         $this->pdf = $pdf;
         $this->mailer = $mailer;
         $this->events = $events;
+        $this->eventName = trim($eventName);
     }
 
     public function execute(
@@ -36,9 +48,28 @@ final class DeliverDocument
             throw new InvalidArgumentException('Delivery recipient is invalid.');
         }
         $binary = $this->pdf->render($snapshot);
+        if ($this->mailer instanceof StagedMailer) {
+            $artifact = null;
+            try {
+                $artifact = $this->mailer->stage($snapshot, $recipient, $subject, $message, $binary);
+                $artifact = $this->mailer->commit($artifact);
+                $this->events->record(
+                    $this->eventName,
+                    $snapshot->toArray()['document_id'],
+                    ['recipient_hash' => hash('sha256', strtolower($recipient))]
+                );
+            } catch (\Throwable $error) {
+                if ($artifact !== null) {
+                    $this->mailer->discard($artifact);
+                }
+                throw $error;
+            }
+            return;
+        }
+
         $this->mailer->send($snapshot, $recipient, $subject, $message, $binary);
         $this->events->record(
-            'document.sent',
+            $this->eventName,
             $snapshot->toArray()['document_id'],
             ['recipient_hash' => hash('sha256', strtolower($recipient))]
         );

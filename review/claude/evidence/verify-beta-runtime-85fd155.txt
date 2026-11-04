@@ -1,0 +1,26 @@
+﻿PASS: manual COD policy qualifies unpaid cod
+PASS: COD decision is explicitly unpaid
+PASS: COD notice is immutable snapshot metadata
+PASS: HTML contains COD notice
+PASS: paid COD is rejected by unpaid-only policy
+PASS: cancelled COD is rejected
+PASS: completed COD is rejected to avoid a false unpaid notice
+PASS: checkout status yields an unpaid order confirmation
+PASS: checkout confirmation has an unpaid badge
+PASS: confirmed payment yields a separate payment confirmation
+PASS: payment confirmation has a paid badge
+PASS: unqualified payment policy decision cannot claim paid
+PASS: policy non-qualification is a typed expected outcome
+PASS: empty payment status matrix is rejected loudly
+PASS: explicitly cleared status matrices stay empty after sanitization
+PASS: disabled order confirmation does not block enabled payment confirmation
+PASS: NativeOrderAdapter maps WooCommerce-shaped order
+PASS: NativeOrderAdapter preserves the authoritative WooCommerce rate
+PASS: rounded WooCommerce line still snapshots as 23% — 230000
+PASS: multiple WooCommerce rate IDs are rejected instead of blended
+PASS: unresolvable WooCommerce rate ID is rejected instead of derived
+PASS: admin writes both independent automation options
+PASS: checkout and status hooks evaluate the matching confirmation policies
+PASS: seller fields become editable when manual source is selected
+PASS: PDF contains the unpaid COD marker
+checks=25 pass=25 fail=0

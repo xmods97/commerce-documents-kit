@@ -27,6 +27,11 @@ function add_action(string $hook, $callback, int $priority = 10, int $acceptedAr
     $GLOBALS['cdk_actions'][$hook][] = [$callback, $priority, $acceptedArgs];
 }
 
+function add_filter(string $hook, $callback, int $priority = 10, int $acceptedArgs = 1): void
+{
+    $GLOBALS['cdk_filters'][$hook][] = [$callback, $priority, $acceptedArgs];
+}
+
 function register_activation_hook(string $file, $callback): void
 {
     $GLOBALS['cdk_activation_hooks'][] = [$file, $callback];

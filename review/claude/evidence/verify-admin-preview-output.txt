@@ -1,0 +1,48 @@
+﻿
+=== P1 — the zero-argument wiring reaches WordPress ===
+  PASS  the media library reads the Custom Logo attachment id
+  PASS  the media library reads the attachment MIME type
+  PASS  the media library reads a local path, not a URL
+  PASS  the media library reads the uploads base directory
+  PASS  a provider constructed with no arguments resolves the logo
+
+=== P2 — a PNG Custom Logo ===
+  PASS  the preview carries an image XObject
+  PASS  the image is drawn on the first page
+  PASS  transparency travels as a soft mask
+  PASS  the document is structurally valid
+  PASS  the document text is intact
+  PASS  nothing remote and nothing active is referenced
+
+=== P3 — a JPEG Custom Logo ===
+  PASS  a JPEG logo is embedded as DCTDecode
+  PASS  the JPEG preview is structurally valid
+  PASS  a JPEG carries no soft mask
+
+=== P4 — the whole logo, never a crop ===
+  PASS  a scaled variant is chosen and its proportions match the original — 600x150
+  PASS  the square crop — the mark without the wordmark — is not chosen
+  PASS  the preview embeds the proportional variant
+
+=== P5 — no logo, and an unusable logo ===
+  PASS  no Custom Logo yields a document with no image at all
+  PASS  the document without a logo is structurally valid
+  PASS  the document without a logo carries the same text
+  PASS  an SVG Custom Logo is refused rather than embedded — Custom Logo is not a PNG or JPEG attachment.
+  PASS  an SVG Custom Logo still produces a valid document, without a logo — byte-identical to the no-logo document
+  PASS  an SVG renamed to .png is refused on its content, not its name — The logo file content is not a PNG or JPEG (image/svg+xml).
+  PASS  a document is still produced when the logo lies about its type
+  PASS  a missing logo file does not stop the document
+
+=== P6 — the preview action itself ===
+  PASS  the preview action is registered on admin_post
+  PASS  it checks the capability before anything else
+  PASS  it checks a nonce bound to the requested document
+  PASS  it responds as an inline PDF with a sniffing guard
+  PASS  it clears any buffered output before writing the binary
+  PASS  a rendering failure becomes an error page, not a broken file
+  PASS  no transport, no queue and no write exist in the controller
+  PASS  the preview link is nonce-signed in the documents list
+  PASS  the download filename is derived safely from the document number
+
+checks=34 pass=34 fail=0
