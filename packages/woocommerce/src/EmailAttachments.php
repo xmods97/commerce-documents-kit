@@ -44,6 +44,11 @@ final class EmailAttachments
             return $attachments;
         }
         $type = $map[$emailId];
+        if ($emailId === 'customer_processing_order'
+            && $order->get_payment_method() === 'cod'
+            && !$order->get_date_paid()) {
+            $type = 'order_confirmation';
+        }
         if ((string) get_option('commerce_documents_wc_' . $type . '_enabled', '0') !== '1') {
             return $attachments;
         }
