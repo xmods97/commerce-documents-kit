@@ -37,6 +37,10 @@ final class OrderMapper
         }
         $metadata['order_number'] = $order->orderId;
         $metadata['order_status'] = $order->status;
+        if ($policy instanceof OrderConfirmationPolicy && $order->paymentMethod === 'cod') {
+            $metadata['payment_method_title'] = $order->paymentMethodTitle;
+            $metadata['shipping_method_title'] = $order->shippingMethodTitle;
+        }
 
         return new GenerationRequest(
             $type,
