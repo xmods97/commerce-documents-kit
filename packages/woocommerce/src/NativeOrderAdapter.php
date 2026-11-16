@@ -88,7 +88,9 @@ final class NativeOrderAdapter
             $this->seller,
             $this->buyer($order),
             $items,
-            method_exists($order, 'get_payment_method') ? (string) $order->get_payment_method() : ''
+            method_exists($order, 'get_payment_method') ? (string) $order->get_payment_method() : '',
+            method_exists($order, 'get_payment_method_title') ? (string) $order->get_payment_method_title() : '',
+            method_exists($order, 'get_shipping_method') ? (string) $order->get_shipping_method() : ''
         );
     }
 
