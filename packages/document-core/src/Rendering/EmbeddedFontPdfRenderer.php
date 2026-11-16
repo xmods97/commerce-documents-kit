@@ -445,6 +445,20 @@ final class EmbeddedFontPdfRenderer implements PdfRenderer
             $page->moveTo($top - 24.0);
         }
 
+        foreach ([
+            'payment_method_title' => 'Płatność',
+            'shipping_method_title' => 'Dostawa',
+        ] as $field => $label) {
+            $value = trim((string) ($metadata[$field] ?? ''));
+            if ($value === '') {
+                continue;
+            }
+            $line = $label . ': ' . self::field($value);
+            foreach ($page->wrap($line, PageBuilder::RIGHT - PageBuilder::MARGIN, 9.0, false, 3) as $part) {
+                $page->line(PageBuilder::MARGIN, $part, 9.0, false, 12.0);
+            }
+        }
+
         // Whatever the heading text did, the next block starts below the logo.
         if ($logoBottom !== null && $logoBottom - 12.0 < $page->y()) {
             $page->moveTo($logoBottom - 12.0);
